@@ -14,10 +14,20 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 STATIC = Path(__file__).with_name("static")
+
+
+class FreshStatic(StaticFiles):
+    """Статика с no-cache: браузер перепроверяет файл по ETag (ответ 304 — дёшево) и после
+    обновления кода не выполняет старый app.js из кэша."""
+
+    def file_response(self, *a, **kw):
+        resp = super().file_response(*a, **kw)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 RETRY_S = 2.0
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 NO_TOKEN = 4401          # код закрытия WebSocket: нужна ссылка с токеном
@@ -25,11 +35,14 @@ NO_TOKEN = 4401          # код закрытия WebSocket: нужна ссы�
 
 def create_app(collector_port: int, token: str | None = None, collector_host="127.0.0.1") -> FastAPI:
     app = FastAPI(title="VisserLab", docs_url=None, redoc_url=None, openapi_url=None)
-    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.mount("/static", FreshStatic(directory=STATIC), name="static")
 
     @app.get("/")
     async def index():
-        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        for name in ("app.js", "app.css"):     # версия в адресе: файл из кэша, взятый до обновления, не подхватится
+            html = html.replace(f"/static/{name}", f"/static/{name}?v={(STATIC / name).stat().st_mtime_ns}")
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket):

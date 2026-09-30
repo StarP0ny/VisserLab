@@ -44,7 +44,9 @@ def test_page_and_static():
     c = TestClient(create_app(free_port()), client=LOCAL)
     r = c.get("/")
     assert r.status_code == 200 and "<title>VisserLab</title>" in r.text
-    assert c.get("/static/app.js").status_code == 200
+    assert '/static/app.js?v=' in r.text and '/static/app.css?v=' in r.text
+    js = c.get("/static/app.js")
+    assert js.status_code == 200 and js.headers["cache-control"] == "no-cache"     # иначе браузер держит старый код
     assert c.get("/static/app.css").status_code == 200
 
 

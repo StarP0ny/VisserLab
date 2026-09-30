@@ -286,7 +286,7 @@ function defaultLayout() {
   const ids = S.order.filter(i => S.devices[i].group in rank).sort((a, b) => rank[S.devices[a].group] - rank[S.devices[b].group]);
   const out = [];
   for (const id of ids) {
-    const viz = devViz(id).filter(c => !CH[c].hidden && !(CH[c].at && CH[c].at.length));
+    const viz = devViz(id).filter(c => !CH[c].hidden && !(CH[c].at && CH[c].at.length === 3));
     for (const g of groupForNew(viz)) out.push(mkPanel(g));
   }
   const wide = out.find(p => p.kind === 'ts' && p.series.length > 1) || out.find(p => p.kind === 'ts');
@@ -649,7 +649,7 @@ function renderDevList() {
   const ids = S.order;
   const block = i => {
     const d = S.devices[i], vis = devViz(i), hid = vis.filter(c => CH[c].hidden);
-    const row = c => `<div class="v${CH[c].hidden ? ' hid' : ''}" data-drag="chan" data-dev="${esc(i)}" data-chan="${esc(c)}">${KIND[CH[c].kind]}<span class="nm">${esc(CH[c].name)}</span><span class="vv" data-cv="${esc(c)}"></span>${CH[c].at && CH[c].at.length && (d.actions || []).includes('roi_del') ? `<button class="icon-btn" data-act="roiDel" data-dev="${esc(i)}" data-key="${esc(CH[c].key)}" data-tip="Удалить точку" aria-label="Удалить точку">${icon('x')}</button>` : ''}</div>`;
+    const row = c => `<div class="v${CH[c].hidden ? ' hid' : ''}" data-drag="chan" data-dev="${esc(i)}" data-chan="${esc(c)}">${KIND[CH[c].kind]}<span class="nm">${esc(CH[c].name)}</span><span class="vv" data-cv="${esc(c)}"></span>${CH[c].at && CH[c].at.length === 3 && (d.actions || []).includes('roi_del') ? `<button class="icon-btn" data-act="roiDel" data-dev="${esc(i)}" data-key="${esc(CH[c].key)}" data-tip="Удалить точку" aria-label="Удалить точку">${icon('x')}</button>` : ''}</div>`;
     return `<div class="dev${S.openDevs.has(i) ? ' open' : ''}${S.moreDevs.has(i) ? ' more' : ''}" data-devrow="${esc(i)}">
       <div class="dev-h" data-drag="dev" data-dev="${esc(i)}">
         ${icon('chev', 'i chev')}<span class="dot" data-st="${esc(i)}"></span>${icon(d.icon)}<span class="nm">${esc(d.name)}</span>
@@ -724,7 +724,7 @@ function panelHTML(p) {
   const wc = p.w === 2 ? ' w2' : p.w === 3 ? ' w3' : '';
   const dev = S.devices[CH[p.series[0]].dev];
   const roi = p.kind === 'frame' && dev && (dev.actions || []).includes('roi_add');
-  const hasRoi = p.kind === 'frame' && devViz(dev.id).some(c => CH[c].at && CH[c].at.length);
+  const hasRoi = p.kind === 'frame' && devViz(dev.id).some(c => CH[c].at && CH[c].at.length === 3);
   return `<section class="panel${wc}" data-panel="${p.id}">
     <header class="p-h"><span class="t">${panelTitle(p)}${roi ? '<span class="ii" tabindex="0" data-tip="Клик по кадру — точка замера.\nПравый клик по точке — удалить." aria-label="Точки замера">i</span>' : ''}</span><div class="p-tools">
       ${roi ? `<button class="icon-btn" data-act="roiClear" data-dev="${esc(dev.id)}" data-tip="Удалить все точки" aria-label="Удалить все точки"${hasRoi ? '' : ' hidden'}>${icon('erase')}</button>` : ''}
@@ -916,11 +916,19 @@ function drawFrame(p, { ctx, w, h }) {
   p.geo = { ox, oy, sc, W: fi.W, H: fi.H };
   const dev = CH[cid].dev, fkey = CH[cid].key;
   ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const tag = (tx, x, y) => { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x, y - 13, ctx.measureText(tx).width + 6, 13); ctx.fillStyle = '#fff'; ctx.fillText(tx, x + 3, y - 6.5); };
   for (const r of devViz(dev)) {
     const c = CH[r]; if (!c.at || c.at[0] !== fkey) continue;
+    const label = c.name.replace(/^(точка|зона) /, '') + (typeof S.last[r] === 'number' ? ' ' + fmtV(S.last[r], 1) : '');
+    if (c.at.length >= 5) {                     // зона или полоса профиля: прямоугольник, задаётся в настройках
+      const x = ox + c.at[1] * sc, y = oy + c.at[2] * sc;
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(x + .5, y + .5, c.at[3] * sc, c.at[4] * sc); ctx.setLineDash([]);
+      tag(label, x, Math.max(y, oy + 13));
+      continue;
+    }
     const x = ox + (c.at[1] + .5) * sc, y = oy + (c.at[2] + .5) * sc;
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5); ctx.stroke();
-    const tx = `${c.name.replace('точка ', '')} ${fmtV(S.last[r], 1)}`; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x + 6, y - 13, ctx.measureText(tx).width + 6, 13); ctx.fillStyle = '#fff'; ctx.fillText(tx, x + 9, y - 6.5);
+    tag(label, x + 6, y);
   }
   const bx = ox + dw + 12;
   for (let i = 0; i < dh; i++) { const q = Math.round((1 - i / dh) * 255) * 3; ctx.fillStyle = `rgb(${IRON[q]},${IRON[q + 1]},${IRON[q + 2]})`; ctx.fillRect(bx, oy + i, bw, 1.5); }
@@ -1129,7 +1137,7 @@ function openCtx(x, y, devId) {
 function closeCtx() { $('#ctx').hidden = true; }
 function roiAt(cv, p, e) {
   const rc = cv.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top, dev = CH[p.series[0]].dev, fkey = CH[p.series[0]].key;
-  return devViz(dev).map(c => CH[c]).find(c => c.at && c.at[0] === fkey && Math.hypot(p.geo.ox + (c.at[1] + .5) * p.geo.sc - x, p.geo.oy + (c.at[2] + .5) * p.geo.sc - y) < 10);
+  return devViz(dev).map(c => CH[c]).find(c => c.at && c.at.length === 3 && c.at[0] === fkey && Math.hypot(p.geo.ox + (c.at[1] + .5) * p.geo.sc - x, p.geo.oy + (c.at[2] + .5) * p.geo.sc - y) < 10);
 }
 document.addEventListener('contextmenu', e => {
   if (S.screen !== 'exp') return;
@@ -1139,7 +1147,7 @@ document.addEventListener('contextmenu', e => {
   else if (cv && !S.done) {
     const p = findPanel(cv.dataset.cvPanel); if (!p || p.kind !== 'frame' || !p.geo) return;
     const dev = CH[p.series[0]].dev; if (!(S.devices[dev].actions || []).includes('roi_del')) return;
-    const q = roiAt(cv, p, e); const any = devViz(dev).some(c => CH[c].at && CH[c].at.length); if (!any) return;
+    const q = roiAt(cv, p, e); const any = devViz(dev).some(c => CH[c].at && CH[c].at.length === 3); if (!any) return;
     e.preventDefault();
     showCtx((q ? `<button data-act="roiDel" data-dev="${esc(dev)}" data-key="${esc(q.key)}">Удалить ${esc(q.name)}</button>` : '') + `<button data-act="roiClear" data-dev="${esc(dev)}">Удалить все точки</button>`, e.clientX, e.clientY);
   }

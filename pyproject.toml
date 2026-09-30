@@ -11,6 +11,7 @@ dependencies = [
     "pyserial>=3.5",
     "PyYAML>=6.0",
     "numpy>=1.24",
+    "opencv-python>=4.8",
     "fastapi>=0.110",
     "uvicorn>=0.27",
     "websockets>=12",

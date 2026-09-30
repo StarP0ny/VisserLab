@@ -26,6 +26,10 @@ devices:
       T7: ch7 слой
       T8: ch8 среда
 
+  thermal:
+    driver: uvc_thermal
+    name: Тепловизор
+
   syringe:
     driver: manual
     name: Шприц-проба

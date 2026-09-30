@@ -677,7 +677,10 @@ class Collector:
                 self.hist.setdefault(f"{dev.id}:{k}", History())
 
     def _channels_changed(self, dev):
+        before = [c.to_dict() for c in dev.channels.values()]
         if not dev.refresh_channels():
+            if [c.to_dict() for c in dev.channels.values()] != before:     # набор тот же, сдвинулась зона на кадре
+                self._publish({"type": "device", "device": dev.info()})
             return
         self._index_channels(dev)
         for cid in [c for c in self.last if c.startswith(dev.id + ":") and c.split(":", 1)[1] not in dev.channels]:
