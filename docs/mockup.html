@@ -724,7 +724,7 @@ const TEMPLATES = [
   { id: 'empty', name: 'Пустой', devs: [], note: 'выбрать всё вручную' },
 ];
 
-/* ================= тик симуляции и тревоги ================= */
+/* ================= тик симуляции и оповещения ================= */
 function tick(dt) {
   S.simT += dt * S.speed;
   const r = S.run; if (!r || r.state === 'done') return;
@@ -977,7 +977,7 @@ Alt — все графики прибора.
         <div class="journal">
           <div class="j-h"><span class="lbl">Журнал<span class="ii" tabindex="0" data-tip="Время заметки — по первому нажатию клавиши.
 Пустой Enter — метка.
-Щелчок по записи — отметка на графиках." aria-label="Как пользоваться">i</span></span><div class="j-f">${[['all', 'Все'], ['user', 'Заметки'], ['sys', 'Система'], ['warn', 'Тревоги']].map(([v, l]) => `<button data-act="jf" data-v="${v}" aria-pressed="${S.jf === v}">${l}</button>`).join('')}</div></div>
+Щелчок по записи — отметка на графиках." aria-label="Как пользоваться">i</span></span><div class="j-f">${[['all', 'Все'], ['user', 'Заметки'], ['sys', 'Система'], ['warn', 'Оповещения']].map(([v, l]) => `<button data-act="jf" data-v="${v}" aria-pressed="${S.jf === v}">${l}</button>`).join('')}</div></div>
           <ol class="j-list" id="jList"></ol>
           <form class="j-in" id="jForm"><span class="tchip" id="jT" hidden></span><input type="text" id="jInput" placeholder="Заметка" autocomplete="off" aria-label="Заметка в журнал"><button class="btn sm primary" type="submit" aria-label="В журнал">⏎</button></form>
         </div>
@@ -1521,7 +1521,7 @@ document.addEventListener('dblclick', e => {
   if (e.target.closest('[data-gw="1"]')) openDevWin('mk1');
 });
 
-/* ================= тревоги, состояния, журнал ================= */
+/* ================= Оповещения, состояния, журнал ================= */
 function setState(st) {
   const r = S.run, t = S.simT;
   if (st === 'rec' && r.state === 'prep') { r.t0 = t; r.state = 'rec'; jpush('sys', `Старт записи, предзапись ${fmtClock(t - r.fromA)}`, t, byLabel()); }

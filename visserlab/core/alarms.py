@@ -1,4 +1,4 @@
-"""Тревоги: пороги по каналам с выдержкой и потеря связи с приборами.
+"""Оповещения: пороги по каналам с выдержкой и потеря связи с приборами.
 
 Уровни: warn — требует внимания (жёлтый), crit — ошибка (красный).
 Правило из шаблона опыта:
@@ -23,11 +23,11 @@ class Rule:
             self.channel = str(d["channel"])
             self.value = float(d["value"])
         except (KeyError, TypeError, ValueError):
-            raise RuleError(f"правило тревоги: нужны channel и value — {d}") from None
+            raise RuleError(f"правило оповещения: нужны channel и value — {d}") from None
         self.op = d.get("op", ">")
         self.level = d.get("level", "warn")
         if self.op not in OPS or self.level not in LEVELS:
-            raise RuleError(f"правило тревоги {self.channel}: op из {list(OPS)}, level из {LEVELS}")
+            raise RuleError(f"правило оповещения {self.channel}: op из {list(OPS)}, level из {LEVELS}")
         self.clear = float(d.get("clear", self.value))
         self.hold = float(d.get("hold", 0))
         self.text = d.get("text", "")

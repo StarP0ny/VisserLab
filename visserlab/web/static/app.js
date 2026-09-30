@@ -609,7 +609,7 @@ function renderExp() {
         <div class="side-h"><span class="lbl">Приборы<span class="ii" tabindex="0" data-tip="Тащите график на поле справа, на панель — наложение.\nAlt — все графики прибора.\nДвойной клик — окно прибора, правый — меню." aria-label="Как пользоваться">i</span></span></div>
         <div class="devlist" id="devList"></div>
         <div class="journal">
-          <div class="j-h"><span class="lbl">Журнал<span class="ii" tabindex="0" data-tip="Время заметки — по первому нажатию клавиши.\nПустой Enter — метка.\nЩелчок по записи — отметка на графиках." aria-label="Как пользоваться">i</span></span><div class="j-f">${[['all', 'Все'], ['user', 'Заметки'], ['sys', 'Система'], ['warn', 'Тревоги']].map(([v, l]) => `<button data-act="jf" data-v="${v}" aria-pressed="${S.jf === v}">${l}</button>`).join('')}</div></div>
+          <div class="j-h"><span class="lbl">Журнал<span class="ii" tabindex="0" data-tip="Время заметки — по первому нажатию клавиши.\nПустой Enter — метка.\nЩелчок по записи — отметка на графиках." aria-label="Как пользоваться">i</span></span><div class="j-f">${[['all', 'Все'], ['user', 'Заметки'], ['sys', 'Система'], ['warn', 'Оповещения']].map(([v, l]) => `<button data-act="jf" data-v="${v}" aria-pressed="${S.jf === v}">${l}</button>`).join('')}</div></div>
           <ol class="j-list" id="jList"></ol>
           <form class="j-in" id="jForm"><span class="tchip" id="jT" hidden></span><input type="text" id="jInput" placeholder="Заметка" autocomplete="off" aria-label="Заметка в журнал"><button class="btn sm primary" type="submit" aria-label="В журнал">⏎</button></form>
         </div>

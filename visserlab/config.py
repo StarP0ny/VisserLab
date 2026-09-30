@@ -16,7 +16,7 @@ import yaml
 from . import drivers  # noqa: F401  регистрирует драйверы
 from .core.driver import REGISTRY
 
-REPO = Path(__file__).resolve().parents[2]      # src/visserlab/config.py → корень репо
+REPO = Path(__file__).resolve().parents[1]      # visserlab/config.py → корень репо
 CONFIG_DIR = REPO / "config"
 LOCAL = "local.yaml"
 LOCAL_HEAD = ("# Найдено перебором на этом ПК. Перекрывает settings из devices.yaml, в git не идёт.\n"
@@ -125,7 +125,7 @@ def code_version():
     try:
         sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
                              capture_output=True, text=True, timeout=5).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "config"], cwd=REPO,
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "visserlab", "config"], cwd=REPO,
                                capture_output=True, text=True, timeout=5).stdout.strip()
         return sha + ("-dirty" if dirty else "") if sha else "unknown"
     except (OSError, subprocess.SubprocessError):

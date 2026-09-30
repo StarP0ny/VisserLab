@@ -23,12 +23,12 @@ dev = ["pytest>=8", "httpx>=0.27"]
 visserlab = "visserlab.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+include = ["visserlab*"]
 
 [tool.setuptools.package-data]
 visserlab = ["web/static/*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "tests"]
+pythonpath = [".", "tests"]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning:starlette.*", "ignore:Using `httpx`"]
