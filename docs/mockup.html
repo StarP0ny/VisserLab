@@ -1,0 +1,1710 @@
+<title>Visser Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;600&display=swap">
+<style>
+/* Приборная стойка: слева шина приборов и журнал, справа поле панелей; сверху строка записи и шкала времени */
+:root {
+  --bg:#E8ECF0; --surface:#F4F6F9; --panel:#FFFFFF; --line:#D2D9E1; --line-2:#E4E9EE;
+  --fg:#14202C; --muted:#586677; --faint:#8793A2;
+  --accent:#2B48C8; --accent-weak:#E1E6F9; --on-accent:#FFFFFF;
+  --rec:#CC3226; --rec-weak:#FAE2DF; --on-rec:#FFFFFF;
+  --pause:#A86F00; --pause-weak:#FAEDCF;
+  --ok:#1B8550; --ok-weak:#DBF0E4; --err:#C42E3B; --err-weak:#F9DEE1;
+  --grid:rgba(20,32,44,.075); --scrim:rgba(20,32,44,.38);
+  --shadow:0 1px 2px rgba(20,32,44,.06),0 10px 30px rgba(20,32,44,.12);
+  --s1:#2F62D9; --s2:#DE6C16; --s3:#10907E; --s4:#C23A89; --s5:#788A0E; --s6:#7450D0; --s7:#B04832; --s8:#4F667E;
+  --f-ui:"Golos Text","Segoe UI",system-ui,sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --f-brand:"Unbounded","Golos Text",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0C1116; --surface:#121920; --panel:#172029; --line:#293441; --line-2:#1F2833;
+  --fg:#E2E8EE; --muted:#92A0AF; --faint:#647287;
+  --accent:#8DA1FF; --accent-weak:#1C2650; --on-accent:#0C1116;
+  --rec:#FF5A4E; --rec-weak:#3A1917; --on-rec:#1B0B09;
+  --pause:#F2B53A; --pause-weak:#382C11;
+  --ok:#3CC37E; --ok-weak:#113222; --err:#FF6472; --err-weak:#3A1820;
+  --grid:rgba(226,232,238,.07); --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.45);
+  --s1:#6E94FF; --s2:#FF9944; --s3:#3BCEB5; --s4:#EF6FB7; --s5:#B8CA3D; --s6:#A78AFF; --s7:#EF7A5F; --s8:#99AFC5;
+  color-scheme:dark;
+} }
+:root[data-theme="dark"] {
+  --bg:#0C1116; --surface:#121920; --panel:#172029; --line:#293441; --line-2:#1F2833;
+  --fg:#E2E8EE; --muted:#92A0AF; --faint:#647287;
+  --accent:#8DA1FF; --accent-weak:#1C2650; --on-accent:#0C1116;
+  --rec:#FF5A4E; --rec-weak:#3A1917; --on-rec:#1B0B09;
+  --pause:#F2B53A; --pause-weak:#382C11;
+  --ok:#3CC37E; --ok-weak:#113222; --err:#FF6472; --err-weak:#3A1820;
+  --grid:rgba(226,232,238,.07); --scrim:rgba(0,0,0,.55);
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 34px rgba(0,0,0,.45);
+  --s1:#6E94FF; --s2:#FF9944; --s3:#3BCEB5; --s4:#EF6FB7; --s5:#B8CA3D; --s6:#A78AFF; --s7:#EF7A5F; --s8:#99AFC5;
+  color-scheme:dark;
+}
+
+html, body { height:100%; }
+body { background:var(--bg); color:var(--fg); font:14px/1.45 var(--f-ui); }
+*, *::before, *::after { box-sizing:border-box; }
+button, input, select { font:inherit; color:inherit; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.num, .mono { font-family:var(--f-num); font-variant-numeric:tabular-nums; }
+.lbl { font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+svg.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+#app { height:100%; padding-block:12px; padding-inline:16px; }
+.screen { height:100%; }
+.scroll { overflow:auto; }
+
+/* ---------- кнопки и поля ---------- */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:34px; padding-inline:14px; border:1px solid var(--line); background:var(--panel); border-radius:8px; cursor:pointer; font-weight:500; white-space:nowrap; }
+.btn:hover:not(:disabled) { border-color:var(--faint); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity:.42; cursor:not-allowed; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.rec { background:var(--rec); border-color:var(--rec); color:var(--on-rec); }
+.btn.warn { background:var(--pause-weak); border-color:var(--pause); color:var(--fg); }
+.btn.ghost { background:transparent; border-color:transparent; }
+.btn.ghost:hover:not(:disabled) { background:var(--surface); border-color:var(--line); }
+.btn.sm { min-height:28px; padding-inline:10px; font-size:13px; }
+.icon-btn { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:7px; border:1px solid transparent; background:transparent; cursor:pointer; color:var(--muted); }
+.icon-btn:hover { background:var(--surface); border-color:var(--line); color:var(--fg); }
+input[type=text], input[type=number], select { height:34px; border:1px solid var(--line); background:var(--panel); border-radius:7px; padding-inline:10px; min-width:0; }
+input::placeholder { color:var(--faint); }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel); }
+.seg button { border:0; background:transparent; padding:5px 11px; cursor:pointer; color:var(--muted); font-size:13px; }
+.seg button + button { border-left:1px solid var(--line); }
+.seg button[aria-pressed="true"] { background:var(--accent-weak); color:var(--fg); font-weight:600; }
+.sw { position:relative; display:inline-flex; align-items:center; gap:9px; cursor:pointer; user-select:none; }
+.sw input { position:absolute; opacity:0; width:1px; height:1px; }
+.sw span { width:34px; height:20px; border-radius:10px; background:var(--line); position:relative; transition:background .15s; flex:none; }
+.sw span::after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:var(--panel); box-shadow:0 1px 2px rgba(0,0,0,.25); transition:transform .15s; }
+.sw input:checked + span { background:var(--accent); }
+.sw input:checked + span::after { transform:translateX(14px); }
+.sw input:focus-visible + span { outline:2px solid var(--accent); outline-offset:2px; }
+.sw input:disabled + span { opacity:.45; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none; }
+.dot.ok { background:var(--ok); } .dot.err { background:var(--err); } .dot.warn { background:var(--pause); } .dot.chk { background:var(--accent); animation:blink 1s infinite; }
+.dot.rec { background:var(--rec); animation:blink 1.4s infinite; }
+.ii { display:inline-grid; place-items:center; width:16px; height:16px; border-radius:50%; border:1px solid var(--line); color:var(--muted); font:600 10px/1 var(--f-ui); font-style:normal; cursor:help; vertical-align:1px; margin-left:6px; text-transform:none; letter-spacing:0; }
+.ii:hover, .ii:focus-visible { border-color:var(--faint); color:var(--fg); }
+.lk { color:var(--pause); margin-left:6px; cursor:help; display:inline-flex; vertical-align:-2px; }
+.lk svg.i { width:14px; height:14px; }
+.tip { position:fixed; z-index:90; max-width:300px; padding:7px 10px; border-radius:8px; background:var(--fg); color:var(--bg); font:400 12.5px/1.4 var(--f-ui); white-space:pre-line; pointer-events:none; box-shadow:var(--shadow); }
+@keyframes blink { 50% { opacity:.25; } }
+.chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:2px 8px; border-radius:999px; background:var(--surface); border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+.chip.ok { background:var(--ok-weak); border-color:transparent; color:var(--fg); }
+.chip.err { background:var(--err-weak); border-color:transparent; color:var(--fg); }
+.chip.chk { background:var(--accent-weak); border-color:transparent; color:var(--fg); }
+
+/* ---------- окно 0 ---------- */
+.home { max-width:900px; margin-inline:auto; padding-block:28px 40px; display:flex; flex-direction:column; gap:28px; }
+.brand { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+.brand h1 { font:600 26px/1.1 var(--f-brand); letter-spacing:-.01em; margin:0; }
+.brand p { margin:0; color:var(--muted); }
+.plate { border:1px solid var(--rec); background:var(--rec-weak); border-radius:14px; padding:22px 24px; display:grid; grid-template-columns:1fr auto; gap:14px 24px; align-items:center; }
+.plate.pause { border-color:var(--pause); background:var(--pause-weak); }
+.plate.prep { border-color:var(--accent); background:var(--accent-weak); }
+.plate .st { display:flex; align-items:center; gap:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; font-size:13px; }
+.plate .st .dot { width:10px; height:10px; }
+.plate h2 { margin:4px 0 0; font:600 22px/1.2 var(--f-ui); text-wrap:balance; }
+.plate .meta { color:var(--muted); display:flex; gap:16px; flex-wrap:wrap; margin-top:6px; }
+.plate .acts { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.plate .btn.primary { min-height:44px; padding-inline:22px; font-size:15px; }
+.acts2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.big { text-align:left; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:22px; cursor:pointer; display:grid; gap:6px; }
+.big:hover:not(:disabled) { border-color:var(--accent); }
+.big:disabled { opacity:.5; cursor:not-allowed; }
+.big b { font:600 19px/1.2 var(--f-brand); }
+.big span { color:var(--muted); }
+.cols2 { display:grid; grid-template-columns:1fr 1.4fr; gap:28px; }
+.list { list-style:none; margin:10px 0 0; padding:0; display:grid; }
+.list li { display:flex; justify-content:space-between; gap:12px; padding-block:9px; border-bottom:1px solid var(--line-2); }
+.list li span:last-child { color:var(--muted); }
+.note { color:var(--muted); font-size:13px; border-top:1px dashed var(--line); padding-top:14px; max-width:68ch; }
+kbd { font-family:var(--f-num); font-size:12px; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; background:var(--panel); }
+
+/* ---------- шаги 1 и 1.1 ---------- */
+.wiz { max-width:1180px; margin-inline:auto; display:flex; flex-direction:column; gap:18px; padding-block:6px 0; min-height:100%; }
+.wiz-h { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.wiz-h h2 { margin:0; font:600 20px/1.2 var(--f-brand); }
+.steps { display:flex; gap:6px; align-items:center; margin-left:auto; color:var(--muted); font-size:13px; flex-wrap:wrap; }
+.steps span { padding:3px 10px; border-radius:999px; border:1px solid var(--line); }
+.steps span.on { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.wiz-row { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+.field { display:grid; gap:4px; }
+.field input, .field select { width:260px; max-width:100%; }
+.toolbar { display:flex; gap:10px 16px; flex-wrap:wrap; align-items:center; padding-block:10px; border-block:1px solid var(--line); }
+.toolbar .sp { flex:1; }
+.grp { display:grid; gap:10px; }
+.grp-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.grp-h .hid { color:var(--faint); font-size:12px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+.tile { position:relative; display:grid; grid-template-columns:auto 1fr; gap:4px 12px; align-items:start; padding:14px; border:1px solid var(--line); background:var(--panel); border-radius:12px; cursor:pointer; text-align:left; }
+.tile:hover { border-color:var(--faint); }
+.tile[aria-pressed="true"] { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); background:linear-gradient(var(--accent-weak),var(--accent-weak)) padding-box; }
+.tile.off { opacity:.55; cursor:not-allowed; }
+.tile .ic { width:38px; height:38px; border-radius:9px; display:grid; place-items:center; background:var(--surface); border:1px solid var(--line-2); grid-row:span 3; }
+.tile .ic svg.i { width:21px; height:21px; }
+.tile .nm { font-weight:600; padding-right:52px; }
+.tile .md { color:var(--muted); font-size:12.5px; }
+.tile .cn { font-family:var(--f-num); font-size:11.5px; color:var(--muted); }
+.tile .row { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:8px; }
+.tile .ck { position:absolute; top:12px; right:12px; width:20px; height:20px; border-radius:6px; border:1.5px solid var(--line); display:grid; place-items:center; background:var(--panel); }
+.tile[aria-pressed="true"] .ck { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.tile .ck svg { width:13px; height:13px; stroke-width:2.4; }
+.rows { display:grid; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--panel); }
+.rowi { display:grid; grid-template-columns:26px 28px minmax(140px,1.2fr) minmax(120px,1fr) minmax(160px,1.4fr) auto auto; gap:12px; align-items:center; padding:9px 12px; border-bottom:1px solid var(--line-2); cursor:pointer; }
+.rowi:last-child { border-bottom:0; }
+.rowi[aria-pressed="true"] { background:var(--accent-weak); }
+.rowi.off { opacity:.55; cursor:not-allowed; }
+.rowi .ck2 { width:16px; height:16px; border-radius:4px; border:1.5px solid var(--line); display:grid; place-items:center; }
+.rowi[aria-pressed="true"] .ck2 { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.rowi .ck2 svg { width:11px; height:11px; stroke-width:2.6; }
+.rowi .cn { font-family:var(--f-num); font-size:12px; color:var(--muted); }
+.rowi .md { color:var(--muted); font-size:13px; }
+.wiz-f { position:sticky; bottom:0; margin-top:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-block:12px; background:var(--bg); border-top:1px solid var(--line); }
+.wiz-f .sp { flex:1; }
+.cfg { display:grid; grid-template-columns:260px 1fr; gap:18px; align-items:start; }
+.cfg-list { display:grid; gap:4px; }
+.cfg-list button { display:flex; gap:10px; align-items:center; text-align:left; padding:9px 11px; border-radius:9px; border:1px solid transparent; background:transparent; cursor:pointer; }
+.cfg-list button:hover { background:var(--surface); }
+.cfg-list button[aria-current="true"] { background:var(--panel); border-color:var(--line); font-weight:600; }
+.cfg-list small { color:var(--muted); font-weight:400; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
+.card-h { display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap; }
+.card-h h3 { margin:0; font-size:17px; }
+
+/* ---------- форма настроек (общая для 1.1 и окна прибора) ---------- */
+.form { display:grid; }
+.f-row { display:grid; grid-template-columns:minmax(150px,230px) 1fr; gap:4px 16px; align-items:center; padding-block:10px; border-bottom:1px solid var(--line-2); }
+.f-row:last-child { border-bottom:0; }
+.f-l { font-weight:500; }
+.f-l em { font-style:normal; font-size:11px; color:var(--ok); margin-left:6px; white-space:nowrap; }
+.f-c { display:flex; gap:8px; align-items:center; min-width:0; }
+.f-c select, .f-c input[type=text], .f-c input[type=number] { width:240px; max-width:100%; }
+.unit { color:var(--muted); font-family:var(--f-num); font-size:12.5px; }
+.f-h { grid-column:2; margin:0; color:var(--muted); font-size:12.5px; max-width:60ch; }
+.f-h.lock { color:var(--pause); }
+.f-info { color:var(--muted); font-size:13px; }
+
+/* ---------- панель опыта ---------- */
+.exp { display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:10px; }
+.topbar { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px 10px; }
+.runname { font-weight:600; font-size:15px; border:1px solid transparent; background:transparent; height:32px; width:150px; }
+.runname:hover, .runname:focus { border-color:var(--line); }
+.state { display:inline-flex; align-items:center; gap:8px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; background:var(--surface); border:1px solid var(--line); }
+.state .dot { width:9px; height:9px; }
+.state.rec { background:var(--rec-weak); border-color:transparent; } .state.rec .dot { background:var(--rec); animation:blink 1.4s infinite; }
+.state.pause { background:var(--pause-weak); border-color:transparent; } .state.pause .dot { background:var(--pause); }
+.state.prep .dot { background:var(--accent); }
+.clock { font:500 22px/1 var(--f-num); font-variant-numeric:tabular-nums; min-width:5.5ch; }
+.clock small { font-size:11px; color:var(--muted); display:block; font-family:var(--f-ui); margin-top:3px; }
+.stat { display:inline-flex; align-items:center; gap:5px; border:0; background:transparent; border-radius:999px; padding:3px 9px 3px 5px; cursor:pointer; font:600 13px var(--f-num); vertical-align:middle; }
+.stat svg.i { width:20px; height:20px; }
+.stat.ok { color:var(--ok); padding-right:5px; } .stat.ok b { display:none; }
+.stat.warn { color:var(--pause); background:var(--pause-weak); }
+.stat.crit { color:var(--err); background:var(--err-weak); }
+.ctrl { display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; }
+.ctrl .btn { min-height:38px; }
+.demo { position:relative; }
+.pop { position:absolute; right:0; top:calc(100% + 6px); z-index:30; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:14px; display:grid; gap:12px; width:260px; }
+.pop p { margin:0; color:var(--muted); font-size:12.5px; }
+.timeline { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.tl { position:relative; flex:1; min-width:220px; height:26px; border-radius:7px; background:var(--panel); border:1px solid var(--line); overflow:hidden; }
+.tl i { position:absolute; top:0; bottom:0; }
+.tl .pre { background:repeating-linear-gradient(135deg,var(--line-2) 0 5px,transparent 5px 10px); }
+.tl .recd { background:var(--accent-weak); }
+.tl .prep { background:repeating-linear-gradient(135deg,var(--line-2) 0 5px,transparent 5px 10px); }
+.tl .pz { background:repeating-linear-gradient(135deg,var(--pause) 0 3px,transparent 3px 7px); opacity:.55; }
+.tl b { position:absolute; top:4px; bottom:4px; width:2px; border-radius:1px; background:var(--muted); }
+.tl b.warn { background:var(--pause); } .tl b.crit { background:var(--err); } .tl b.set { background:var(--accent); } .tl b.manual { background:var(--s4); }
+.tl .win { position:absolute; top:1px; bottom:1px; border:1.5px solid var(--fg); border-radius:5px; opacity:.55; }
+.tl .tx { position:absolute; top:5px; font:11px/1 var(--f-num); color:var(--muted); white-space:nowrap; }
+.work { display:grid; grid-template-columns:300px minmax(0,1fr); gap:10px; min-height:0; }
+.side { display:grid; grid-template-rows:auto minmax(0,1.15fr) minmax(0,1fr); background:var(--panel); border:1px solid var(--line); border-radius:12px; min-height:0; overflow:hidden; }
+.side-h { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px 6px; }
+.side-h .hint { color:var(--faint); font-size:12px; }
+.devlist { overflow:auto; padding:0 6px 8px; user-select:none; -webkit-user-select:none; }
+.gw { display:flex; align-items:center; gap:8px; padding:9px 8px 4px; color:var(--muted); font-size:12px; cursor:default; }
+.gw b { color:var(--fg); font-weight:600; }
+.gw .cn { font-family:var(--f-num); font-size:11px; }
+.gw.err b { color:var(--err); }
+.dev { border-radius:9px; }
+.dev + .dev { margin-top:2px; }
+.dev-h { display:grid; grid-template-columns:14px 8px 20px minmax(0,1fr) auto 26px; align-items:center; gap:8px; padding:7px 4px 7px 6px; border-radius:9px; cursor:grab; touch-action:none; }
+.dev-h:hover { background:var(--surface); }
+.dev-h .nm { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dev-h .vv { font:12px var(--f-num); color:var(--muted); white-space:nowrap; text-align:right; }
+.dev-h .vv.stale { color:var(--err); }
+.dev-h .chev { width:14px; height:14px; transition:transform .15s; color:var(--faint); }
+.dev.open .chev { transform:rotate(90deg); }
+.dev-h .all { display:none; font-size:11px; padding:1px 6px; border-radius:5px; background:var(--accent); color:var(--on-accent); white-space:nowrap; }
+body.alt .dev-h .all { display:inline-block; }
+body.alt .dev-h .vv { display:none; }
+body.alt .dev-h { cursor:copy; outline:1px dashed var(--accent); outline-offset:-1px; }
+.dev .vz { display:none; padding:0 0 4px 36px; }
+.dev.open .vz { display:grid; gap:1px; }
+.v .icon-btn { width:20px; height:20px; }
+.v .icon-btn svg.i { width:13px; height:13px; }
+.v { display:grid; grid-template-columns:16px minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:5px 8px; border-radius:7px; cursor:grab; touch-action:none; font-size:13px; }
+.v:hover { background:var(--accent-weak); }
+.v svg { width:15px; height:15px; fill:none; stroke:var(--muted); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.v .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.v .vv { font:12px var(--f-num); color:var(--muted); white-space:nowrap; }
+.dev.lost .nm { color:var(--err); }
+.lp { background:var(--accent-weak) !important; }
+.journal { display:grid; grid-template-rows:auto minmax(0,1fr) auto; border-top:1px solid var(--line); min-height:0; }
+.j-h { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:9px 12px 6px; flex-wrap:wrap; }
+.j-f { display:flex; gap:4px; }
+.j-f button { border:0; background:transparent; font-size:12px; padding:2px 7px; border-radius:6px; cursor:pointer; color:var(--muted); }
+.j-f button[aria-pressed="true"] { background:var(--surface); color:var(--fg); font-weight:600; }
+.j-list { list-style:none; margin:0; padding:0 8px; overflow:auto; display:flex; flex-direction:column; gap:1px; }
+.j-list li { display:grid; grid-template-columns:44px 16px minmax(0,1fr); gap:6px; padding:5px 6px; border-radius:7px; cursor:pointer; font-size:13px; line-height:1.35; }
+.j-list li:hover { background:var(--surface); }
+.j-list li.pin { background:var(--accent-weak); }
+.j-list time { font:11.5px/1.5 var(--f-num); color:var(--muted); }
+.j-list .g { font-size:12px; line-height:1.45; text-align:center; color:var(--muted); }
+.j-list .user .g { color:var(--accent); } .j-list .warn .g { color:var(--pause); } .j-list .set .g { color:var(--accent); } .j-list .manual .g { color:var(--s4); }
+.j-list .crit .g { color:var(--err); } .j-list .crit .tx { font-weight:500; }
+.j-list .sys .tx { color:var(--muted); }
+.j-list .warn .tx { font-weight:500; }
+.j-list .by { color:var(--faint); font-size:11.5px; }
+.j-in { display:flex; gap:6px; padding:8px; border-top:1px solid var(--line-2); align-items:center; }
+.j-in input { flex:1; height:36px; }
+.tchip { font:11.5px var(--f-num); padding:2px 6px; border-radius:5px; background:var(--accent-weak); white-space:nowrap; }
+.dock { position:relative; overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:0; padding:1px; }
+.dgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(400px,1fr)); grid-auto-rows:280px; gap:10px; }
+.dock.empty .dgrid { grid-auto-rows:minmax(320px,auto); }
+@media (max-width:1160px) { .panel.w2 { grid-column:auto; } }
+.panel { position:relative; display:grid; grid-template-rows:auto auto minmax(0,1fr); background:var(--panel); border:1px solid var(--line); border-radius:12px; min-width:0; min-height:0; overflow:hidden; }
+.panel.w2 { grid-column:span 2; }
+.panel.w3 { grid-column:1 / -1; }
+.p-h { display:flex; align-items:center; gap:8px; padding:7px 6px 2px 12px; min-width:0; }
+.p-h .t { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+.p-h .t small { color:var(--muted); font-weight:400; }
+.p-tools { display:flex; gap:2px; }
+.p-tools .icon-btn { width:26px; height:26px; }
+.p-lg { display:flex; flex-wrap:wrap; gap:3px 12px; padding:0 12px 4px; font-size:12px; min-height:20px; }
+.lg { display:inline-flex; align-items:center; gap:6px; color:var(--muted); white-space:nowrap; }
+.lg i { width:10px; height:3px; border-radius:2px; background:var(--c); }
+.lg i.pt { width:7px; height:7px; border-radius:50%; background:transparent; border:2px solid var(--c); }
+.lg b { font:500 12px var(--f-num); color:var(--fg); font-variant-numeric:tabular-nums; }
+.lg b.oos { color:var(--pause); }
+.lg .rx { border:0; background:transparent; color:var(--faint); cursor:pointer; padding:0 2px; font-size:13px; line-height:1; }
+.lg .rx:hover { color:var(--err); }
+.lg .ax { font-size:10px; color:var(--faint); }
+.p-b { position:relative; min-height:0; }
+.p-b canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.p-b canvas.clickable { cursor:crosshair; }
+.drop { position:absolute; inset:0; display:none; place-items:center; border-radius:12px; font-weight:600; pointer-events:none; z-index:5; }
+.panel.d-ok .drop, .dropzone.d-ok .drop { display:grid; background:color-mix(in srgb,var(--accent) 14%,transparent); outline:2px dashed var(--accent); outline-offset:-4px; color:var(--fg); }
+.panel.d-bad .drop { display:grid; background:color-mix(in srgb,var(--err) 12%,transparent); outline:2px dashed var(--err); outline-offset:-4px; color:var(--err); text-align:center; padding:16px; }
+.dropzone { position:relative; border:1.5px dashed var(--line); border-radius:12px; display:grid; place-items:center; text-align:center; color:var(--muted); padding:20px; min-height:160px; }
+.dropzone p { margin:4px 0 0; max-width:36ch; font-size:13px; }
+.dropzone b { color:var(--fg); }
+.dock.empty .dropzone { grid-column:1 / -1; min-height:320px; }
+.done-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-radius:12px; background:var(--ok-weak); border:1px solid var(--ok); }
+.done-bar .sp { flex:1; }
+.done-bar code { font:12px var(--f-num); }
+.ptabs { display:none; }
+
+/* плавающее окно = отдельное окно браузера в настоящем интерфейсе */
+.float { position:fixed; z-index:40; display:grid; grid-template-rows:auto minmax(0,1fr); background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); resize:both; overflow:hidden; min-width:320px; min-height:220px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); }
+.float .chrome { display:flex; align-items:center; gap:8px; padding:6px 8px; background:var(--surface); border-bottom:1px solid var(--line); cursor:move; touch-action:none; user-select:none; }
+.float .chrome .lights { display:flex; gap:5px; } .float .chrome .lights i { width:10px; height:10px; border-radius:50%; background:var(--line); }
+.float .chrome .url { flex:1; font:11.5px var(--f-num); color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:3px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.float .panel { border:0; border-radius:0; }
+
+/* ---------- окна, меню, призрак ---------- */
+.scrim { position:fixed; inset:0; z-index:50; background:var(--scrim); display:grid; place-items:center; padding-inline:16px; }
+.modal { width:min(720px,100%); max-height:calc(100% - 32px); display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+.m-h { display:grid; grid-template-columns:auto 1fr auto; gap:4px 14px; align-items:center; padding:16px 18px 10px; }
+.m-h .ic { width:40px; height:40px; border-radius:10px; display:grid; place-items:center; background:var(--surface); border:1px solid var(--line-2); grid-row:span 2; }
+.m-h h3 { margin:0; font-size:17px; }
+.m-h .sub { color:var(--muted); font-size:12.5px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.m-h .sub .mono { font-size:11.5px; }
+.m-tabs { display:flex; gap:2px; padding-inline:14px; border-bottom:1px solid var(--line); }
+.m-tabs button { border:0; background:transparent; padding:9px 12px; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; }
+.m-tabs button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
+.m-b { overflow:auto; padding:6px 18px 14px; }
+.m-f { display:flex; gap:8px; justify-content:flex-end; padding:12px 18px; border-top:1px solid var(--line); flex-wrap:wrap; }
+.m-f .sp { flex:1; }
+.lockline { margin:10px 0 0; padding:8px 12px; border-radius:8px; background:var(--pause-weak); font-size:13px; }
+table.t { width:100%; border-collapse:collapse; font-size:13px; }
+table.t th { text-align:left; font-weight:600; color:var(--muted); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; padding:10px 8px 6px; border-bottom:1px solid var(--line); }
+table.t td { padding:7px 8px; border-bottom:1px solid var(--line-2); vertical-align:middle; }
+table.t td input { height:30px; width:100%; }
+table.t .mono { font-size:12px; color:var(--muted); }
+.kv { display:grid; grid-template-columns:minmax(120px,190px) 1fr; gap:8px 16px; padding-block:12px; }
+.kv dt { color:var(--muted); } .kv dd { margin:0; }
+pre.hex { font:12px/1.6 var(--f-num); background:var(--surface); border:1px solid var(--line-2); border-radius:8px; padding:10px 12px; margin:0; overflow-x:auto; }
+.ctx { position:fixed; z-index:60; min-width:220px; background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); padding:5px; display:grid; }
+.ctx button { text-align:left; border:0; background:transparent; padding:8px 10px; border-radius:7px; cursor:pointer; display:flex; justify-content:space-between; gap:14px; }
+.ctx button:hover { background:var(--surface); }
+.ctx small { color:var(--faint); }
+.ghost { position:fixed; z-index:70; pointer-events:none; display:flex; align-items:center; gap:8px; padding:6px 11px; border-radius:9px; background:var(--panel); border:1px solid var(--accent); box-shadow:var(--shadow); font-size:13px; font-weight:500; transform:translate(14px,10px); white-space:nowrap; }
+.ghost .n { font-size:11px; padding:1px 6px; border-radius:5px; background:var(--accent); color:var(--on-accent); }
+.toast { position:fixed; z-index:80; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:9px 16px; border-radius:10px; box-shadow:var(--shadow); font-size:13px; max-width:calc(100vw - 32px); }
+.an { max-width:1000px; margin-inline:auto; padding-block:20px; display:grid; gap:18px; }
+.an-t { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+.an-t table { min-width:640px; }
+
+/* ---------- телефон: пульт ---------- */
+@media (max-width:760px) {
+  #app { padding-block:8px; }
+  .acts2, .cols2 { grid-template-columns:1fr; }
+  .plate { grid-template-columns:1fr; }
+  .plate .acts { justify-content:stretch; } .plate .acts .btn { flex:1; }
+  .cfg { grid-template-columns:1fr; }
+  .cfg-list { display:flex; overflow-x:auto; }
+  .cfg-list button { white-space:nowrap; }
+  .f-row { grid-template-columns:1fr; }
+  .f-h { grid-column:1; }
+  .rowi { grid-template-columns:22px 26px minmax(0,1fr) auto auto; }
+  .rowi .md, .rowi .cn { display:none; }
+  .steps { margin-left:0; }
+  .exp { grid-template-rows:auto auto minmax(0,1fr) auto; gap:8px; }
+  .topbar { padding:8px; }
+  .runname { width:110px; }
+  .ctrl { width:100%; margin-left:0; }
+  .ctrl .btn { flex:1; min-height:46px; font-size:15px; }
+  .demo { margin-left:auto; }
+  .tl { height:14px; min-width:120px; } .tl .tx { display:none; }
+  .work { grid-template-columns:1fr; }
+  .exp[data-ptab="graphs"] .side { display:none; }
+  .exp:not([data-ptab="graphs"]) .dock { display:none; }
+  .exp[data-ptab="devs"] .side { grid-template-rows:auto minmax(0,1fr); }
+  .exp[data-ptab="devs"] .journal { display:none; }
+  .exp[data-ptab="journal"] .side { grid-template-rows:minmax(0,1fr); }
+  .exp[data-ptab="journal"] .devlist, .exp[data-ptab="journal"] .side-h { display:none; }
+  .exp[data-ptab="journal"] .journal { border-top:0; }
+  .dgrid { grid-template-columns:1fr; grid-auto-rows:230px; }
+  .panel.w2, .panel.w3 { grid-column:auto; }
+  .p-tools [data-act="wide"], .p-tools [data-act="detach"] { display:none; }
+  .ptabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .ptabs button { min-height:44px; border:1px solid var(--line); background:var(--panel); border-radius:10px; cursor:pointer; font-weight:500; }
+  .ptabs button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+  .side-h .hint { display:none; }
+}
+@media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+
+<div id="app">
+  <section id="s-home" class="screen scroll"></section>
+  <section id="s-select" class="screen scroll" hidden></section>
+  <section id="s-settings" class="screen scroll" hidden></section>
+  <section id="s-exp" class="screen exp" hidden></section>
+  <section id="s-analysis" class="screen scroll" hidden></section>
+</div>
+<div id="floats"></div>
+<div id="modal" class="scrim" hidden></div>
+<div id="ctx" class="ctx" hidden></div>
+<div id="ghost" class="ghost" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="tip" class="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= утилиты ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = s => parseFloat(String(s).replace(',', '.'));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function noise(k, a) { const x = Math.sin(k * 127.1 + a * 311.7) * 43758.5453; return x - Math.floor(x) - .5; }
+function fmtClock(sec) {
+  if (sec == null || !isFinite(sec)) return '—:—';
+  const s = Math.round(sec), a = Math.abs(s), h = Math.floor(a / 3600), m = Math.floor(a % 3600 / 60), ss = a % 60;
+  return (s < 0 ? '−' : '') + (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0');
+}
+function fmtDur(sec) {
+  if (sec == null || !isFinite(sec)) return '—:—:—';
+  const a = Math.max(0, Math.round(sec));
+  return Math.floor(a / 3600) + ':' + String(Math.floor(a % 3600 / 60)).padStart(2, '0') + ':' + String(a % 60).padStart(2, '0');
+}
+function fmtV(v, dp) {
+  if (v == null || !isFinite(v)) return '—';
+  const s = Math.abs(v) >= 10000 ? Math.round(v).toLocaleString('ru-RU') : v.toFixed(dp).replace('.', ',');
+  return s.replace('-', '−');
+}
+function lowerBound(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; }
+const isPhone = () => matchMedia('(max-width: 760px)').matches;
+
+/* ================= иконки ================= */
+const IC = {
+  thermo: '<path d="M10 3a2 2 0 0 0-2 2v7.3a3.5 3.5 0 1 0 4 0V5a2 2 0 0 0-2-2z"/><path d="M10 9v5"/>',
+  thermal: '<rect x="2.5" y="5" width="15" height="10.5" rx="2"/><circle cx="10" cy="10.25" r="3"/><path d="M5 3h4"/><path d="M14.5 7.5h.01"/>',
+  cam: '<rect x="2.5" y="5.5" width="11" height="9" rx="2"/><path d="M13.5 9l4-2.5v7l-4-2.5"/>',
+  gas: '<circle cx="10" cy="10" r="2.6"/><circle cx="4" cy="10" r="1.8"/><circle cx="16" cy="10" r="1.8"/><path d="M5.8 10h1.6M12.6 10h1.6"/>',
+  drop: '<path d="M10 3.3s-5 5.5-5 9a5 5 0 0 0 10 0c0-3.5-5-9-5-9z"/>',
+  gauge: '<path d="M3.5 14a6.5 6.5 0 1 1 13 0"/><path d="M10 14l3.3-4.2"/><circle cx="10" cy="14" r="1"/>',
+  o2: '<circle cx="8.5" cy="10" r="4.8"/><path d="M14.5 13.2h3l-3 3.3h3"/>',
+  syringe: '<path d="M14 3l3 3M15.5 4.5L7 13l-3 .8.8-3L13.3 2.3"/><path d="M4 16l-2 2M9 8.5l2 2M11.2 6.3l2 2"/>',
+  scale: '<path d="M3 16h14l-1.6-7.5H4.6z"/><path d="M7.8 8.5a2.2 2.2 0 0 1 4.4 0"/>',
+  calc: '<path d="M15 4H5.5l5 6-5 6H15"/>',
+  chip: '<rect x="5" y="5" width="10" height="10" rx="1.5"/><path d="M8 2.5V5M12 2.5V5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/>',
+  manual: '<path d="M4 16h3l9-9-3-3-9 9z"/><path d="M11.5 5.5l3 3"/>',
+  sok: '<circle cx="10" cy="10" r="7.5"/><path d="M6.6 10.2l2.4 2.4 4.5-4.9"/>',
+  swarn: '<path d="M10 2.8l7.8 13.7H2.2z"/><path d="M10 8v3.6M10 14.2h.01"/>',
+  scrit: '<path d="M7 2.5h6l4.5 4.5v6L13 17.5H7L2.5 13V7z"/><path d="M7.6 7.6l4.8 4.8M12.4 7.6l-4.8 4.8"/>',
+  lock: '<rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>',
+  erase: '<path d="M8 16.5h9"/><path d="M3.5 12.5l7-7 5 5-6 6H7.5z"/>',
+  home: '<path d="M3 9.5L10 3.5l7 6"/><path d="M5 8v8.5h10V8"/>',
+  chev: '<path d="M6 4l4 4-4 4"/>',
+  more: '<circle cx="4" cy="10" r=".9"/><circle cx="10" cy="10" r=".9"/><circle cx="16" cy="10" r=".9"/>',
+  check: '<path d="M4 10.5l3.5 3.5L16 5.5"/>',
+  wide: '<path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3"/>',
+  pop: '<rect x="3" y="6" width="10" height="10" rx="1.5"/><path d="M9 3h8v8M17 3l-7 7"/>',
+  x: '<path d="M5 5l10 10M15 5L5 15"/>',
+  search: '<circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/>',
+  plus: '<path d="M10 4v12M4 10h12"/>',
+};
+const icon = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 20 20" aria-hidden="true">${IC[k] || ''}</svg>`;
+const KIND = {
+  ts: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11l3-4 3 3 3-6 3.5 5"/></svg>',
+  pts: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="10" r="1.6"/><circle cx="8.5" cy="6" r="1.6"/><circle cx="12.5" cy="9" r="1.6"/></svg>',
+  frame: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 8h12M8 3v10"/></svg>',
+  profile: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 12c3 0 3-8 6.5-8s3.5 6 6.5 6"/></svg>',
+  video: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z"/></svg>',
+};
+const KIND_NAME = { ts: 'временной ряд', pts: 'точки', frame: 'кадр', profile: 'профиль', video: 'видео' };
+
+/* ================= фейковая физика ================= */
+const AMB = 23.0, LEN = 180;
+const rise = (t, d, tau) => (t == null || t < d) ? 0 : 1 - Math.exp(-(t - d) / tau);
+const corpusT = (x, t) => { const f = x / LEN; return AMB + (112 - 26 * f) * rise(t, 40 + 300 * f, 380 + 90 * f); };
+const shtRH = t => t == null ? 42 : 91.5 + 4 * Math.sin(2 * Math.PI * t / 310);
+const shtT = t => t == null ? AMB : AMB + (34.8 - AMB) * rise(t, 0, 25) + .4 * Math.sin(t / 37);
+const absHum = (rh, T) => 216.7 * (rh / 100) * 6.112 * Math.exp(17.62 * T / (243.12 + T)) / (273.15 + T);
+const nz = (k, a, s) => s * noise(k, a);
+
+/* тепловизор: кадр 160×120, корпус с чёрной полосой, гофра слева, мешок справа */
+const IW = 160, IH = 120, BX0 = 24, BX1 = 136, BY0 = 46, BY1 = 74, SY0 = 58, SY1 = 62;
+const STATIC = new Float32Array(IW * IH).map((_, i) => noise(i, 7.31) * .5);
+const epsNow = () => +INST.th.set.eps || .95;
+function apparent(col, row, t, e, trueT) {
+  const bg = AMB - .8 + 1.4 * row / IH + STATIC[row * IW + col];
+  if (col >= BX0 && col < BX1 && row >= BY0 && row < BY1) {
+    const T = trueT != null ? trueT : corpusT((col - BX0) / (BX1 - BX0) * LEN, t);
+    const sh = .86 + .14 * Math.sin(Math.PI * (row - BY0 + .5) / (BY1 - BY0));
+    if (row >= SY0 && row < SY1) return AMB + (T - AMB) * (.95 / e) * sh;       // полоса, ε≈0,95
+    return AMB + 1 + (T - AMB) * .28 * (.95 / e) * sh;                            // голый металл: занижает
+  }
+  if (col >= 8 && col < BX0 && row >= 54 && row < 66) { const g = t == null ? AMB : AMB + 12 * rise(t, 0, 30); return AMB + (g - AMB) * .9; }
+  if (col >= BX1 + 2 && col < 156 && row >= 38 && row < 82) { const b = AMB + 16 * rise(t, 120, 500); return AMB + (b - AMB) * .9 + STATIC[row * IW + col] * .6; }
+  return bg;
+}
+const colMM = col => (col - BX0) / (BX1 - BX0) * LEN;
+function stripeMax(t, e) { let m = -1e9; for (let c = BX0; c < BX1; c += 4) m = Math.max(m, apparent(c, 60, t, e)); return m; }
+
+/* ================= типы приборов (драйверы) и экземпляры ================= */
+const SCH = {
+  pt: [
+    { key: 'port', label: 'Порт', type: 'text', def: 'COM26', live: false },
+    { key: 'baud', label: 'Скорость', type: 'select', opts: ['4800', '9600', '19200', '38400'], def: '9600', unit: 'бод', live: false },
+    { key: 'addr', label: 'Адрес Modbus', type: 'number', min: 1, max: 247, step: 1, def: 1, live: false },
+    { key: 'period', label: 'Период опроса', type: 'select', opts: ['0,5', '1', '2', '5'], def: '1', unit: 'с', live: true },
+    { key: 'wr', label: 'Писать сопротивление R1–R8', type: 'toggle', def: true, live: false, hint: 'Чтобы пересчитать калибровку задним числом.' },
+  ],
+  th: [
+    { key: 'fps', label: 'Частота записи кадров', type: 'select', opts: ['1', '5', '9', '25'], def: '9', unit: 'к/с', live: false, hint: '25 к/с ≈ 1,2 ГБ за час.' },
+    { key: 'pal', label: 'Палитра', type: 'select', opts: [['iron', 'Железо'], ['rainbow', 'Радуга'], ['gray', 'Серая']], def: 'iron', live: true },
+    { key: 'eps', label: 'Излучательная способность ε', type: 'number', min: .1, max: 1, step: .01, def: .95, live: true, hint: 'Чёрная матовая полоса ≈ 0,95, голый металл 0,1–0,3.' },
+    { key: 'scale', label: 'Шкала', type: 'select', opts: [['auto', 'Авто по кадру'], ['fix', 'Фиксированная 20–150 °C']], def: 'auto', live: true },
+  ],
+  cam: [
+    { key: 'fps', label: 'Частота кадров', type: 'select', opts: ['0,5', '1', '5'], def: '1', unit: 'к/с', live: false },
+    { key: 'res', label: 'Разрешение', type: 'select', opts: ['640×480', '1280×720'], def: '1280×720', live: false },
+  ],
+  scd: [
+    { key: 'mode', label: 'Режим измерения', type: 'select', opts: [['p5', 'Периодический, 5 с'], ['lp', 'Экономичный, 30 с'], ['ss', 'По запросу']], def: 'p5', live: false },
+    { key: 'range', label: 'Диапазон', type: 'select', opts: [['full', 'Полный 0–40 000 ppm'], ['spec', 'Паспортный 400–5000 ppm']], def: 'full', live: true, hint: 'Датчик всегда отдаёт 0–40 000 ppm. «Паспортный» помечает значения выше 5000 ppm.' },
+    { key: 'asc', label: 'Автокалибровка ASC', type: 'toggle', def: false, live: false, hint: 'Тянет базу к 400 ppm. На стенде выключать.' },
+    { key: 'pcomp', label: 'Давление для компенсации', type: 'number', min: 70, max: 120, step: .1, def: 101.3, unit: 'кПа', live: true },
+    { key: 'toff', label: 'Смещение температуры', type: 'number', min: 0, max: 20, step: .1, def: 4, unit: '°C', live: false },
+  ],
+  sht: [
+    { key: 'rate', label: 'Частота опроса', type: 'select', opts: ['0,5', '1', '2'], def: '1', unit: 'Гц', live: false },
+    { key: 'rep', label: 'Повторяемость', type: 'select', opts: [['high', 'Высокая'], ['med', 'Средняя'], ['low', 'Низкая']], def: 'high', live: false },
+    { key: 'heat', label: 'Импульс нагревателя', type: 'select', opts: [['off', 'Выключен'], ['20', '20 мВт, 1 с'], ['110', '110 мВт, 1 с'], ['200', '200 мВт, 1 с']], def: 'off', live: true, hint: 'Снимает дрейф после долгой работы выше 90 % RH.' },
+    { key: 'every', label: 'Импульс каждые', type: 'number', min: 1, max: 60, step: 1, def: 5, unit: 'мин', live: true },
+  ],
+  sdp: [
+    { key: 'rate', label: 'Частота', type: 'select', opts: ['10', '50', '100', '200'], def: '100', unit: 'Гц', live: false },
+    { key: 'avg', label: 'Усреднение в датчике', type: 'toggle', def: true, live: false },
+    { key: 'comp', label: 'Компенсация', type: 'select', opts: [['dp', 'Дифференциальное давление'], ['mf', 'Массовый расход']], def: 'dp', live: false },
+    { key: 'zero', label: 'Ноль', type: 'action', btn: 'Снять ноль', live: false, hint: 'Снимать без потока.' },
+  ],
+  o2: [
+    { key: 'gain', label: 'Усиление ADS1115', type: 'select', opts: ['±0,256 В', '±0,512 В'], def: '±0,256 В', live: false },
+    { key: 'cal', label: 'Калибровка', type: 'info', text: 'Две точки: воздух 20,9 % и азот 0 %.' },
+  ],
+  syr: [
+    { key: 'unit', label: 'Единица', type: 'select', opts: [['pct', '% об.']], def: 'pct', live: true },
+    { key: 'method', label: 'Метод', type: 'info', text: 'Поглощение KOH в шприце 60 мл: убыль объёма / начальный объём.' },
+  ],
+  scale: [ { key: 'res', label: 'Разрешение', type: 'select', opts: ['0,01 г', '0,1 г'], def: '0,01 г', live: true } ],
+  manual: [ { key: 'unit', label: 'Единица', type: 'text', def: '—', live: false } ],
+  ah: [
+    { key: 'src', label: 'Источник', type: 'select', opts: [['sht1', 'SHT45 #1']], def: 'sht1', live: false },
+    { key: 'f', label: 'Формула', type: 'info', text: 'ρ = 216,7 · (RH/100) · 6,112·e^(17,62·T/(243,12+T)) / (273,15+T), г/м³' },
+  ],
+  mk1: [
+    { key: 'port', label: 'Порт', type: 'text', def: 'COM31', live: false },
+    { key: 'baud', label: 'Скорость', type: 'select', opts: ['115200', '921600'], def: '115200', unit: 'бод', live: false },
+    { key: 'proto', label: 'Протокол шлюза', type: 'info', text: 'Продумаем отдельно.' },
+  ],
+};
+
+const TYPES = {
+  pt100: { title: 'Pt100 ×8', model: 'PTA8D08 · eletechsup', icon: 'thermo', sch: 'pt', group: 'direct',
+    chans: inst => ['корпус, вход', 'корпус, середина', 'корпус, выход', 'корпус, плёнка', 'газ, вход', 'газ, выход', 'слой', 'среда'].map((n, i) => ({
+      k: String(i + 1), name: `ch${i + 1} ${n}`, kind: 'ts', unit: '°C', dp: 1, color: i,
+      gen: inst.id !== 'pt' ? (t, a) => AMB + nz(i + 40, a, .1) : [
+        (t, a) => corpusT(10, t) + nz(1, a, .1),
+        (t, a) => corpusT(90, t) + nz(2, a, .1),
+        (t, a) => corpusT(170, t) + nz(3, a, .1),
+        (t, a) => corpusT(90, t) + 1.4 * rise(t, 0, 300) + nz(4, a, .1),
+        (t, a) => (t == null ? AMB : AMB + 12.1 * rise(t, 0, 20) + .5 * Math.sin(2 * Math.PI * a / 4)) + nz(5, a, .1),
+        (t, a) => AMB + 58 * rise(t, 20, 300) + nz(6, a, .1),
+        (t, a) => AMB + 222 * rise(t, 60, 210) + nz(7, a, .15),
+        (t, a) => AMB + .6 * rise(t, 0, 900) + nz(8, a, .05),
+      ][i],
+    })) },
+  thermal: { title: 'Тепловизор', model: 'Victor 328B · UVC 256×192', icon: 'thermal', sch: 'th', group: 'direct',
+    chans: () => [
+      { k: 'frame', name: 'кадр', kind: 'frame', unit: '°C' },
+      { k: 'prof', name: 'профиль', kind: 'profile', unit: '°C', color: 0 },
+      { k: 'max', name: 'максимум', kind: 'ts', unit: '°C', dp: 1, color: 6, gen: t => stripeMax(t, epsNow()) },
+    ] },
+  cam: { title: 'Камера', model: 'USB UVC', icon: 'cam', sch: 'cam', group: 'direct', chans: () => [{ k: 'video', name: 'видео', kind: 'video' }] },
+  scd41: { title: 'SCD41', model: 'Sensirion SCD41', icon: 'gas', sch: 'scd', group: 'mk',
+    chans: () => [
+      { k: 'co2', name: 'CO₂', kind: 'ts', unit: 'ppm', dp: 0, color: 0, gen: (t, a) => 430 + 9000 * rise(t, 30, 1200) + nz(21, a, 25) },
+      { k: 't', name: 'T', kind: 'ts', unit: '°C', dp: 1, color: 1, gen: (t, a) => AMB + 20 * rise(t, 60, 600) + nz(22, a, .1) },
+      { k: 'rh', name: 'RH', kind: 'ts', unit: '%', dp: 1, color: 2, gen: (t, a) => (t == null ? 45 : 45 + 52.5 * rise(t, 0, 90)) + nz(23, a, .3) },
+    ] },
+  sht45: { title: 'SHT45', model: 'Sensirion SHT45', icon: 'drop', sch: 'sht', group: 'mk',
+    chans: inst => [
+      { k: 'rh', name: 'RH', kind: 'ts', unit: '%', dp: 1, color: 2, gen: inst.id === 'sht1' ? (t, a) => shtRH(t) + nz(31, a, .25) : (t, a) => 48 + nz(33, a, .3) },
+      { k: 't', name: 'T', kind: 'ts', unit: '°C', dp: 2, color: 1, gen: inst.id === 'sht1' ? (t, a) => shtT(t) + nz(32, a, .03) : (t, a) => 24 + nz(34, a, .03) },
+    ] },
+  sdp810: { title: 'SDP810', model: 'Sensirion SDP810-500Pa', icon: 'gauge', sch: 'sdp', group: 'mk',
+    chans: () => [{ k: 'dp', name: 'ΔP', kind: 'ts', unit: 'Па', dp: 1, color: 0, gen: (t, a) => t == null ? nz(41, a, .8) : (110 + 180 * Math.min(1, t / 1800)) * Math.sin(2 * Math.PI * a / 4) + nz(41, a, 6) }] },
+  o2: { title: 'O₂-ячейка', model: 'AO-02 + ADS1115', icon: 'o2', sch: 'o2', group: 'mk',
+    chans: () => [{ k: 'o2', name: 'O₂', kind: 'ts', unit: '%', dp: 2, color: 5, gen: (t, a) => 20.9 + 6 * rise(t, 60, 600) + nz(51, a, .03) }] },
+  syringe: { title: 'Шприц-проба', model: 'ручной ввод', icon: 'syringe', sch: 'syr', group: 'manual', chans: () => [{ k: 'co2', name: 'CO₂', kind: 'pts', unit: '%', dp: 2, color: 3 }] },
+  scale: { title: 'Весы', model: 'ручной ввод', icon: 'scale', sch: 'scale', group: 'manual', chans: () => [{ k: 'm', name: 'масса', kind: 'pts', unit: 'г', dp: 2, color: 7 }] },
+  manual: { title: 'Ручной прибор', model: 'ручной ввод', icon: 'manual', sch: 'manual', group: 'manual', chans: () => [{ k: 'v', name: 'значение', kind: 'pts', unit: '—', dp: 2, color: 5 }] },
+  abshum: { title: 'Абс. влажность', model: 'вычисляемый канал', icon: 'calc', sch: 'ah', group: 'calc',
+    chans: () => [{ k: 'rho', name: 'ρ воды', kind: 'ts', unit: 'г/м³', dp: 2, color: 4, gen: (t, a) => absHum(shtRH(t) + nz(31, a, .25), shtT(t)) }] },
+};
+
+const GW = { id: 'mk1', name: 'МК-1', model: 'шлюз датчиков', conn: 'USB CDC · COM31 · 115200', status: 'ok', icon: 'chip', sch: 'mk1', set: {} };
+const INST = {}, CH = {};
+let devOrder = [];
+function addInst(type, o) {
+  const T = TYPES[type];
+  const inst = { type, id: o.id, name: o.name || T.title, model: T.model, icon: T.icon, sch: T.sch, group: T.group,
+    conn: o.conn || '', found: o.found !== false, status: T.group === 'manual' ? 'manual' : T.group === 'calc' ? 'calc' : (o.found === false ? 'missing' : 'ok'),
+    note: o.note || '', needs: o.needs || null, set: {}, chans: [] };
+  for (const f of SCH[inst.sch]) if ('def' in f) inst.set[f.key] = f.def;
+  for (const c of T.chans(inst)) { const id = inst.id + ':' + c.k; CH[id] = { ...c, id, dev: inst.id }; inst.chans.push(id); }
+  INST[inst.id] = inst; devOrder.push(inst.id);
+  return inst;
+}
+for (const f of SCH.mk1) if ('def' in f) GW.set[f.key] = f.def;
+addInst('pt100', { id: 'pt', conn: 'Modbus RTU · COM26 · 9600 · адр. 1' });
+addInst('thermal', { id: 'th', conn: 'USB · UVC' });
+addInst('cam', { id: 'cam', conn: 'USB · UVC' });
+addInst('scd41', { id: 'scd', name: 'SCD41 #1', conn: 'I²C · TCA ch2 · 0x62' });
+addInst('sht45', { id: 'sht1', name: 'SHT45 #1', conn: 'I²C · TCA ch0 · 0x44' });
+addInst('sht45', { id: 'sht2', name: 'SHT45 #2', conn: 'I²C · TCA ch1 · 0x44', found: false, note: 'МК-1: нет ответа по I²C' });
+addInst('sdp810', { id: 'sdp', conn: 'I²C · TCA ch5 · 0x25' });
+addInst('o2', { id: 'o2', conn: 'I²C · 0x48', found: false, note: 'МК-1: нет ответа по I²C' });
+addInst('syringe', { id: 'syr', conn: 'ручной ввод' });
+addInst('scale', { id: 'scale', conn: 'ручной ввод' });
+addInst('abshum', { id: 'ah', conn: 'из SHT45 #1', needs: 'sht1' });
+let roiSeq = 0;
+
+function rateOf(c) {
+  const d = INST[c.dev];
+  if (c.dev === 'pt' || d.type === 'pt100') return 1 / num(d.set.period);
+  if (d.type === 'sht45') return num(d.set.rate);
+  if (d.type === 'scd41') return d.set.mode === 'lp' ? 1 / 30 : .2;
+  if (d.type === 'sdp810') return 5;
+  if (c.kind === 'ts') return 1;
+  return 0;
+}
+const isLost = devId => S.mkDown && INST[devId] && INST[devId].group === 'mk';
+
+/* ================= состояние ================= */
+const S = {
+  screen: 'home', simT: 100000, speed: 1, mkDown: false,
+  run: null, finished: [],
+  view: 'tiles', showMissing: false, lastSearch: null, searching: false,
+  sel: new Set(), draftName: '', template: 'empty', cfgDev: null,
+  win: 300, cursor: null, pin: null, jf: 'all', ptab: 'graphs', noteA: null,
+};
+const RECENT = [
+  { name: 'dry02', when: '29.09 · 16:40', dur: '0:41:52', n: 6, note: 'пустой корпус, проверка теплоотдачи' },
+  { name: 'selftest', when: '29.09 · 23:55', dur: '0:00:06', n: 1, note: 'проверка регистратора' },
+  { name: 'calib_sht_nacl', when: '27.09 · 21:10', dur: '11:58:20', n: 2, note: 'SHT над NaCl, 75,3 %' },
+];
+const WALL0 = new Date(2026, 8, 30, 14, 12, 5).getTime();
+let wallRef = 0;
+const wallOf = a => new Date(WALL0 + (a - wallRef) * 1000);
+const hhmmss = d => d.toTimeString().slice(0, 8);
+
+function newRun(name, devIds, fromA) {
+  const r = { name, devs: new Set(devIds), state: 'prep', t0: null, doneA: null, fromA, pauses: [], journal: [], panels: [],
+    data: {}, next: {}, alarms: {}, marks: 0, chans: [], lastAlarmCheck: 0 };
+  for (const d of devIds) for (const id of INST[d].chans) { r.chans.push(id); r.data[id] = { t: [], v: [] }; }
+  return r;
+}
+const relOf = (r, a) => (r.t0 == null || a < r.t0) ? null : a - r.t0;
+const refT = () => S.run.t0 != null ? S.run.t0 : S.simT;
+const endA = () => S.run.state === 'done' ? S.run.doneA : S.simT;
+function fill(r, id, from, to) {
+  const c = CH[id]; const rate = rateOf(c); if (!rate || !c.gen) return;
+  const d = r.data[id]; let a = r.next[id] != null ? r.next[id] : from;
+  let guard = 0;
+  while (a <= to && guard++ < 200000) {
+    if (!isLost(c.dev)) { d.t.push(a); d.v.push(c.gen(relOf(r, a), a)); }
+    a += 1 / rate;
+  }
+  r.next[id] = a;
+}
+function jpush(src, text, a = S.simT, by = '') { const r = S.run; if (!r) return; r.journal.push({ a, src, text, by }); r.journal.sort((x, y) => x.a - y.a); if (S.screen === 'exp') renderJournal(true); }
+const byLabel = () => isPhone() ? 'телефон' : 'этот ПК';
+
+/* ---------- демонстрационный опыт dry03, идёт 18:30 ---------- */
+function demoRun() {
+  const t0 = S.simT - 1110; wallRef = t0;
+  const r = newRun('dry03', ['pt', 'th', 'scd', 'sht1', 'sdp', 'syr', 'ah'], t0 - 300);
+  r.t0 = t0; r.state = 'rec'; r.pauses = [{ a: 450, b: 495 }];
+  S.run = r;
+  for (const id of r.chans) fill(r, id, r.fromA, S.simT);
+  r.data['syr:co2'] = { t: [t0 + 662, t0 + 1005], v: [0.43, 0.56] };
+  const J = (t, src, text, by = '') => r.journal.push({ a: t0 + t, src, text, by });
+  J(0, 'sys', 'Старт записи, предзапись 5:00', 'этот ПК');
+  J(14, 'user', 'дыхание пошло: 15/мин, 1,2 л, CO₂ на входе 4,5 %');
+  J(76, 'warn', 'SHT45 #1: RH 95,4 % — риск конденсата');
+  J(118, 'sys', 'SHT45 #1: RH 92,7 %, норма');
+  J(450, 'sys', 'Пауза', 'телефон');
+  J(468, 'user', 'поправил патч ch2, отходил от корпуса');
+  J(495, 'sys', 'Продолжить', 'этот ПК');
+  J(662, 'manual', 'Шприц-проба: CO₂ 0,43 %');
+  J(860, 'set', 'Тепловизор: частота записи кадров 5 → 9 к/с');
+  J(1005, 'manual', 'Шприц-проба: CO₂ 0,56 %');
+  J(1062, 'user', 'по тепловизору фронт у 70 мм от входа');
+  r.marks = 1;
+  r.panels = templatePanels('patron');
+  S.sel = new Set(r.devs);
+}
+let pSeq = 0;
+function panel(series, w = 1) { const c = CH[series[0]]; return { id: 'p' + (++pSeq), kind: kindGroup(c.kind), series: [...series], w, float: null }; }
+const kindGroup = k => (k === 'ts' || k === 'pts') ? 'ts' : k;
+function templatePanels(tpl) {
+  if (tpl === 'patron') return [
+    panel(['pt:1', 'pt:2', 'pt:3', 'pt:8'], 2),
+    panel(['th:frame']),
+    panel(['th:prof']),
+    panel(['scd:co2', 'syr:co2']),
+    panel(['sdp:dp']),
+  ];
+  if (tpl === 'calib') return [panel(['sht1:rh']), panel(['sht1:t', 'pt:8'])];
+  return [];
+}
+const TEMPLATES = [
+  { id: 'patron', name: 'Visser: патрон', devs: ['pt', 'th', 'scd', 'sht1', 'sdp', 'syr', 'ah'], note: '7 приборов · 5 панелей' },
+  { id: 'calib', name: 'Калибровка SHT в банке', devs: ['sht1', 'pt'], note: '2 прибора · 2 панели' },
+  { id: 'empty', name: 'Пустой', devs: [], note: 'выбрать всё вручную' },
+];
+
+/* ================= тик симуляции и тревоги ================= */
+function tick(dt) {
+  S.simT += dt * S.speed;
+  const r = S.run; if (!r || r.state === 'done') return;
+  for (const id of r.chans) fill(r, id, S.simT, S.simT);
+  if (r.state === 'prep') {           // предзапись: держим последние 5 минут
+    const keep = S.simT - 300;
+    if (keep - r.fromA > 10) {
+      r.fromA = keep;
+      for (const id of r.chans) { const d = r.data[id]; const i = lowerBound(d.t, keep); if (i > 0) { d.t.splice(0, i); d.v.splice(0, i); } }
+    }
+  }
+  if (S.simT - r.lastAlarmCheck >= 1) { r.lastAlarmCheck = S.simT; checkAlarms(); }
+}
+function lastVal(id) { const d = S.run && S.run.data[id]; return d && d.v.length ? d.v[d.v.length - 1] : null; }
+/* уровни: warn — требует внимания (жёлтый), crit — ошибка (красный) */
+function raise(key, level, text) { S.run.alarms[key] = { level, text }; jpush(level, text); }
+function clearAlarm(key, text) { const r = S.run; if (!r.alarms[key]) return; r.alarms[key] = null; if (text) jpush('sys', text); }
+function rule(key, dev, level, bad, good, onText, offText) {
+  const r = S.run; if (!r.devs.has(dev) || isLost(dev)) return;
+  if (!r.alarms[key] && bad) raise(key, level, onText());
+  else if (r.alarms[key] && good) clearAlarm(key, offText());
+}
+function checkAlarms() {
+  const rh = lastVal('sht1:rh'), hot = lastVal('pt:1');
+  rule('rh', 'sht1', 'warn', rh > 95, rh < 93, () => `SHT45 #1: RH ${fmtV(rh, 1)} % — риск конденсата`, () => `SHT45 #1: RH ${fmtV(rh, 1)} %, норма`);
+  rule('hot', 'pt', 'warn', hot > 130, hot < 128, () => `Pt100 ch1: ${fmtV(hot, 1)} °C > 130 °C`, () => `Pt100 ch1: ${fmtV(hot, 1)} °C, норма`);
+}
+function alarmState() {
+  const items = S.run ? Object.values(S.run.alarms).filter(Boolean) : [];
+  const level = items.some(a => a.level === 'crit') ? 'crit' : items.length ? 'warn' : 'ok';
+  return { level, n: items.length, items, key: level + items.map(a => a.text).join('|') };
+}
+function statHTML(tag = 'button') {
+  const s = alarmState();
+  const tip = s.level === 'ok' ? 'Всё в норме' : s.items.map(a => (a.level === 'crit' ? '✕ ' : '⚠ ') + a.text).join('\n');
+  return `<${tag} class="stat ${s.level}"${tag === 'button' ? ' data-act="alarmFilter"' : ''} data-tip="${esc(tip)}" aria-label="${esc(tip)}">${icon({ ok: 'sok', warn: 'swarn', crit: 'scrit' }[s.level])}<b>${s.n}</b></${tag}>`;
+}
+
+/* ================= навигация ================= */
+function go(screen) {
+  S.screen = screen;
+  for (const s of ['home', 'select', 'settings', 'exp', 'analysis']) $('#s-' + s).hidden = s !== screen;
+  $('#floats').hidden = screen !== 'exp';
+  closeCtx();
+  ({ home: renderHome, select: renderSelect, settings: renderSettings, exp: renderExp, analysis: renderAnalysis })[screen]();
+}
+const activeRun = () => S.run && S.run.state !== 'done';
+
+/* ================= окно 0 ================= */
+function renderHome() {
+  const r = S.run, busy = activeRun();
+  $('#s-home').innerHTML = `<div class="home">
+    <header class="brand"><h1>Visser Lab</h1><p>регистратор опытов</p></header>
+    <div id="plate">${busy ? plateHTML() : ''}</div>
+    <div class="acts2">
+      <button class="big" data-act="new" ${busy ? 'disabled' : ''}><b>Новый опыт</b><span>${busy ? 'Сначала завершите текущий' : 'Выбрать приборы и начать'}</span></button>
+      <button class="big" data-act="analysis"><b>Анализ</b><span>Разбор завершённых опытов</span></button>
+    </div>
+    <div class="cols2">
+      <div><div class="lbl">Шаблоны опытов</div><ul class="list">${TEMPLATES.map(t => `<li><span>${esc(t.name)}</span><span>${esc(t.note)}</span></li>`).join('')}</ul></div>
+      <div><div class="lbl">Недавние опыты</div><ul class="list">${[...S.finished, ...RECENT].slice(0, 6).map(x => `<li><span><b>${esc(x.name)}</b> · ${esc(x.note)}</span><span class="num">${esc(x.when)} · ${esc(x.dur)}</span></li>`).join('')}</ul></div>
+    </div>
+    <p class="note">Макет, данные выдуманы. Меню «Демо» на панели опыта ускоряет время.</p>
+  </div>`;
+}
+function plateHTML() {
+  const r = S.run, st = r.state;
+  const label = { rec: 'Идёт опыт · запись', pause: 'Идёт опыт · пауза', prep: 'Подготовка' }[st];
+  return `<div class="plate ${st}">
+    <div><div class="st"><span class="dot ${st === 'rec' ? 'rec' : st === 'pause' ? 'warn' : 'ok'}"></span>${label}</div>
+      <h2>${esc(r.name)}</h2>
+      <div class="meta"><span class="num" id="plateTime">${r.t0 != null ? fmtDur(S.simT - r.t0) : '—:—:—'}</span><span>приборов: ${r.devs.size}</span><span id="plateStat">${statHTML('span')}</span></div></div>
+    <div class="acts">${st === 'prep' ? '<button class="btn" data-act="cancelPrep">Отменить</button>' : ''}<button class="btn primary" data-act="toExp">Перейти к опыту →</button></div>
+  </div>`;
+}
+function updateHomePlate() {
+  if (!activeRun()) return;
+  const t = $('#plateTime'); if (t && S.run.t0 != null) t.textContent = fmtDur(S.simT - S.run.t0);
+  const a = $('#plateStat'), s = alarmState(); if (a && a.dataset.k !== s.key) { a.dataset.k = s.key; a.innerHTML = statHTML('span'); }
+}
+
+/* ================= шаг 1: приборы ================= */
+function statusChip(d) {
+  if (d.status === 'checking') return '<span class="chip chk"><span class="dot chk"></span>проверяю…</span>';
+  if (d.status === 'ok') return '<span class="chip ok"><span class="dot ok"></span>найден</span>';
+  if (d.status === 'missing') return '<span class="chip err"><span class="dot err"></span>не найден</span>';
+  if (d.status === 'manual') return '<span class="chip">ручной ввод</span>';
+  if (d.status === 'calc') return '<span class="chip">вычисляемый</span>';
+  return '';
+}
+function devAvailable(d) {
+  if (d.status === 'missing' || d.status === 'checking') return false;
+  if (d.needs && !S.sel.has(d.needs)) return false;
+  return true;
+}
+function renderSelect() {
+  const groups = [
+    { key: 'direct', title: 'Прямое подключение' },
+    { key: 'mk', title: 'Через МК-1', gw: true },
+    { key: 'manual', title: 'Ручные и вычисляемые' },
+  ];
+  const ls = S.lastSearch ? `проверено в ${hhmmss(S.lastSearch)} · найдено ${devOrder.filter(i => INST[i].status === 'ok').length} из ${devOrder.filter(i => ['direct', 'mk'].includes(INST[i].group)).length}` : 'поиск не запускался';
+  const body = groups.map(g => {
+    const ids = devOrder.filter(i => g.key === 'manual' ? ['manual', 'calc'].includes(INST[i].group) : INST[i].group === g.key);
+    const shown = ids.filter(i => S.showMissing || INST[i].status !== 'missing');
+    const hidden = ids.length - shown.length;
+    const head = `<div class="grp-h"><span class="lbl">${g.title}</span>${g.gw ? `<span class="chip ${GW.status === 'ok' ? 'ok' : GW.status === 'checking' ? 'chk' : 'err'}"><span class="dot ${GW.status === 'ok' ? 'ok' : GW.status === 'checking' ? 'chk' : 'err'}"></span>${GW.status === 'checking' ? 'опрашиваю шлюз…' : 'шлюз на связи'} · <span class="mono">${esc(GW.conn)}</span></span>` : ''}${hidden ? `<span class="hid">скрыто: ${hidden}</span>` : ''}</div>`;
+    const items = shown.map(i => S.view === 'tiles' ? tileHTML(INST[i]) : rowHTML(INST[i])).join('');
+    return `<div class="grp">${head}${S.view === 'tiles' ? `<div class="tiles">${items}</div>` : `<div class="rows">${items}</div>`}</div>`;
+  }).join('');
+  $('#s-select').innerHTML = `<div class="wiz">
+    <div class="wiz-h"><button class="icon-btn" data-act="home" data-tip="Главная" aria-label="Главная">${icon('home')}</button><h2>Новый опыт</h2>
+      <div class="steps"><span class="on">1 Приборы</span><span>2 Настройки</span><span>3 Опыт</span></div></div>
+    <div class="wiz-row">
+      <label class="field"><span class="lbl">Название</span><input type="text" id="runNameNew" value="${esc(S.draftName)}"></label>
+      <label class="field"><span class="lbl">Шаблон</span><select id="tplSel">${TEMPLATES.map(t => `<option value="${t.id}"${t.id === S.template ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+    </div>
+    <div class="toolbar">
+      <button class="btn primary" data-act="search" ${S.searching ? 'disabled' : ''}>${icon('search')}${S.searching ? 'Проверяю…' : 'Найти приборы'}</button>
+      <span class="num" style="color:var(--muted);font-size:12.5px">${ls}</span>
+      <span class="sp"></span>
+      <label class="sw"><input type="checkbox" id="showMissing" ${S.showMissing ? 'checked' : ''}><span></span>Показать недоступные</label>
+      <div class="seg" role="group" aria-label="Вид"><button data-act="view" data-v="tiles" aria-pressed="${S.view === 'tiles'}">Плитки</button><button data-act="view" data-v="list" aria-pressed="${S.view === 'list'}">Список</button></div>
+      <button class="btn" data-act="catalog">${icon('plus')}Прибор</button>
+    </div>
+    ${body}
+    <div class="wiz-f"><span>Выбрано: <b class="num">${S.sel.size}</b></span><span class="sp"></span>
+      <button class="btn" data-act="toSettings" ${S.sel.size ? '' : 'disabled'}>Настройки →</button>
+      <button class="btn primary" data-act="startPrep" ${S.sel.size ? '' : 'disabled'}>Сразу в опыт →</button></div>
+  </div>`;
+}
+function tileHTML(d) {
+  const on = S.sel.has(d.id), av = devAvailable(d);
+  const why = d.status === 'missing' ? d.note || 'не ответил на параметрах по умолчанию' : (d.needs && !S.sel.has(d.needs)) ? `нужен ${INST[d.needs].name}` : '';
+  return `<div class="tile${av ? '' : ' off'}" role="button" tabindex="0" data-act="sel" data-dev="${d.id}" aria-pressed="${on}">
+    <span class="ck">${on ? icon('check') : ''}</span>
+    <span class="ic">${icon(d.icon)}</span>
+    <span class="nm">${esc(d.name)}</span>
+    <span class="md">${esc(d.model)}</span>
+    <span class="cn">${esc(d.conn)}</span>
+    <span class="row">${statusChip(d)}${why ? `<span class="md">${esc(why)}</span>` : ''}<button class="icon-btn" data-act="gear" data-dev="${d.id}" data-tip="Настройки" aria-label="Настройки ${esc(d.name)}">⚙</button></span>
+  </div>`;
+}
+function rowHTML(d) {
+  const on = S.sel.has(d.id), av = devAvailable(d);
+  return `<div class="rowi${av ? '' : ' off'}" role="button" tabindex="0" data-act="sel" data-dev="${d.id}" aria-pressed="${on}">
+    <span class="ck2">${on ? icon('check') : ''}</span>${icon(d.icon)}<b>${esc(d.name)}</b><span class="md">${esc(d.model)}</span><span class="cn">${esc(d.conn)}</span>${statusChip(d)}
+    <button class="icon-btn" data-act="gear" data-dev="${d.id}" data-tip="Настройки" aria-label="Настройки ${esc(d.name)}">⚙</button></div>`;
+}
+function runSearch() {
+  if (S.searching) return;
+  S.searching = true;
+  const hw = devOrder.filter(i => ['direct', 'mk'].includes(INST[i].group));
+  hw.forEach(i => INST[i].status = 'checking'); GW.status = 'checking';
+  renderSelect();
+  let left = hw.length;
+  const done = () => { if (--left === 0) { S.searching = false; S.lastSearch = wallOf(S.simT); renderSelect(); } else renderSelect(); };
+  const resolve = i => { INST[i].status = INST[i].found ? 'ok' : 'missing'; if (!INST[i].found) S.sel.delete(i); done(); };
+  hw.filter(i => INST[i].group === 'direct').forEach(i => setTimeout(() => resolve(i), 220 + Math.random() * 420));
+  setTimeout(() => { GW.status = 'ok'; renderSelect(); hw.filter(i => INST[i].group === 'mk').forEach(i => setTimeout(() => resolve(i), 150 + Math.random() * 450)); }, 320);
+}
+
+/* ================= шаг 1.1: настройки ================= */
+function renderSettings() {
+  const ids = devOrder.filter(i => S.sel.has(i));
+  if (!S.cfgDev || !S.sel.has(S.cfgDev)) S.cfgDev = ids[0];
+  const d = INST[S.cfgDev];
+  $('#s-settings').innerHTML = `<div class="wiz">
+    <div class="wiz-h"><button class="icon-btn" data-act="home" data-tip="Главная" aria-label="Главная">${icon('home')}</button><h2>Настройки приборов</h2>
+      <div class="steps"><span>1 Приборы</span><span class="on">2 Настройки</span><span>3 Опыт</span></div></div>
+    <div class="cfg">
+      <nav class="cfg-list">${ids.map(i => `<button data-act="cfgDev" data-dev="${i}" aria-current="${i === S.cfgDev}">${icon(INST[i].icon)}<span>${esc(INST[i].name)}<br><small>${changedCount(INST[i]) ? 'изменено: ' + changedCount(INST[i]) : 'по умолчанию'}</small></span></button>`).join('')}</nav>
+      <div class="card">
+        <div class="card-h">${icon(d.icon)}<h3>${esc(d.name)}</h3><span class="chip">${esc(d.model)}</span><span class="sp" style="flex:1"></span><button class="btn sm ghost" data-act="cfgReset" data-dev="${d.id}">По умолчанию</button></div>
+        <div class="form" id="cfgForm" data-dev="${d.id}">${formHTML(d, d.set, false)}</div>
+      </div>
+    </div>
+    <div class="wiz-f"><button class="btn" data-act="toSelect">← Приборы</button><span class="sp"></span><button class="btn primary" data-act="startPrep">В опыт →</button></div>
+  </div>`;
+}
+const changedCount = d => SCH[d.sch].filter(f => 'def' in f && String(d.set[f.key]) !== String(f.def)).length;
+
+/* ---------- генератор формы из схемы драйвера ---------- */
+function formHTML(d, vals, lockNonLive) {
+  return SCH[d.sch].map(f => {
+    const id = `f-${d.id}-${f.key}`, v = vals[f.key];
+    const locked = lockNonLive && f.live === false;
+    const dis = locked ? ' disabled' : '';
+    if (f.type === 'info') return `<div class="f-row"><span class="f-l">${esc(f.label)}</span><span class="f-info">${esc(f.text)}</span></div>`;
+    let ctl = '';
+    if (f.type === 'select') ctl = `<select id="${id}" data-k="${f.key}"${dis}>${f.opts.map(o => { const [ov, ol] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(ov)}"${String(ov) === String(v) ? ' selected' : ''}>${esc(ol)}</option>`; }).join('')}</select>`;
+    else if (f.type === 'number') ctl = `<input id="${id}" data-k="${f.key}" type="number" inputmode="decimal" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}"${dis}>`;
+    else if (f.type === 'text') ctl = `<input id="${id}" data-k="${f.key}" type="text" value="${esc(v)}"${dis}>`;
+    else if (f.type === 'toggle') ctl = `<label class="sw"><input id="${id}" data-k="${f.key}" type="checkbox"${v ? ' checked' : ''}${dis}><span></span></label>`;
+    else if (f.type === 'action') ctl = `<button type="button" id="${id}" class="btn sm" data-act="devAction" data-dev="${d.id}" data-k="${f.key}"${dis}>${esc(f.btn)}</button>`;
+    return `<div class="f-row"><label class="f-l" for="${id}">${esc(f.label)}${f.live === false ? '' : '<em data-tip="Можно менять во время записи">на ходу</em>'}${f.hint ? `<span class="ii" tabindex="0" data-tip="${esc(f.hint)}" aria-label="${esc(f.hint)}">i</span>` : ''}${locked ? `<span class="lk" data-tip="Меняется на паузе" aria-label="Меняется на паузе">${icon('lock')}</span>` : ''}</label>
+      <div class="f-c">${ctl}${f.unit ? `<span class="unit">${esc(f.unit)}</span>` : ''}</div></div>`;
+  }).join('');
+}
+function readForm(root) {
+  const o = {};
+  $$('[data-k]', root).forEach(el => { if (el.tagName === 'BUTTON') return; o[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? parseFloat(el.value) : el.value; });
+  return o;
+}
+function showVal(f, v) {
+  if (f.type === 'toggle') return v ? 'вкл' : 'выкл';
+  if (f.type === 'select') { const o = f.opts.find(o => String(Array.isArray(o) ? o[0] : o) === String(v)); return (Array.isArray(o) ? o[1] : o) + (f.unit ? ' ' + f.unit : ''); }
+  return String(v).replace('.', ',') + (f.unit ? ' ' + f.unit : '');
+}
+
+/* ================= создание опыта ================= */
+function startPrep() {
+  const name = ($('#runNameNew') && $('#runNameNew').value.trim()) || S.draftName || 'опыт';
+  INST.th.chans = INST.th.chans.filter(id => !id.startsWith('th:roi')); rois = []; roiSeq = 0;
+  S.run = newRun(name, devOrder.filter(i => S.sel.has(i)), S.simT - 300);
+  for (const id of S.run.chans) fill(S.run, id, S.run.fromA, S.simT);
+  S.run.panels = templatePanels(S.template).filter(p => p.series.every(id => S.run.chans.includes(id)));
+  S.run.journal.push({ a: S.simT, src: 'sys', text: `Подготовка: ${S.run.devs.size} приборов на связи, монитор идёт, на диск не пишется`, by: '' });
+  S.ptab = S.run.panels.length ? 'graphs' : 'devs';
+  go('exp');
+}
+
+/* ================= панель опыта ================= */
+function renderExp() {
+  const r = S.run;
+  $('#s-exp').innerHTML = `
+    <header class="topbar">
+      <button class="icon-btn" data-act="home" data-tip="Главная" aria-label="Главная">${icon('home')}</button>
+      <input class="runname" id="runNameEdit" value="${esc(r.name)}" aria-label="Название опыта">
+      <span class="state" id="statePill"></span>
+      <div class="clock num" id="clock" data-tip="От старта записи"></div>
+      <span id="statBox"></span>
+      <div class="ctrl" id="ctrl"></div>
+      <div class="demo"><button class="btn sm ghost" data-act="demo" aria-expanded="false">Демо ▾</button>
+        <div class="pop" id="demoPop" hidden>
+          <div><div class="lbl">Скорость симуляции</div><div class="seg" style="margin-top:6px">${[1, 10, 60].map(k => `<button data-act="speed" data-v="${k}" aria-pressed="${S.speed === k}">×${k}</button>`).join('')}</div></div>
+          <label class="sw"><input type="checkbox" id="mkDown" ${S.mkDown ? 'checked' : ''}><span></span>Обрыв МК-1</label>
+        </div></div>
+    </header>
+    <div class="timeline">
+      <div class="tl" id="tl"></div>
+      <div class="seg" role="group" aria-label="Окно времени">${[[60, '1 мин'], [300, '5 мин'], [1800, '30 мин'], ['all', 'Всё']].map(([v, l]) => `<button data-act="win" data-v="${v}" aria-pressed="${String(S.win) === String(v)}">${l}</button>`).join('')}</div>
+    </div>
+    <div class="work">
+      <aside class="side">
+        <div class="side-h"><span class="lbl">Приборы<span class="ii" tabindex="0" data-tip="Тащите график на поле справа, на панель — наложение.
+Alt — все графики прибора.
+Двойной клик — окно прибора, правый — меню." aria-label="Как пользоваться">i</span></span></div>
+        <div class="devlist" id="devList"></div>
+        <div class="journal">
+          <div class="j-h"><span class="lbl">Журнал<span class="ii" tabindex="0" data-tip="Время заметки — по первому нажатию клавиши.
+Пустой Enter — метка.
+Щелчок по записи — отметка на графиках." aria-label="Как пользоваться">i</span></span><div class="j-f">${[['all', 'Все'], ['user', 'Заметки'], ['sys', 'Система'], ['warn', 'Тревоги']].map(([v, l]) => `<button data-act="jf" data-v="${v}" aria-pressed="${S.jf === v}">${l}</button>`).join('')}</div></div>
+          <ol class="j-list" id="jList"></ol>
+          <form class="j-in" id="jForm"><span class="tchip" id="jT" hidden></span><input type="text" id="jInput" placeholder="Заметка" autocomplete="off" aria-label="Заметка в журнал"><button class="btn sm primary" type="submit" aria-label="В журнал">⏎</button></form>
+        </div>
+      </aside>
+      <main class="dock" id="dock"></main>
+    </div>
+    <nav class="ptabs">${[['devs', 'Приборы'], ['graphs', 'Графики'], ['journal', 'Журнал']].map(([v, l]) => `<button data-act="ptab" data-v="${v}" aria-pressed="${S.ptab === v}">${l}</button>`).join('')}</nav>`;
+  $('#s-exp').dataset.ptab = S.ptab;
+  renderCtrl(); renderDevList(); renderJournal(); renderDock(); updateTop(); updateTimeline();
+}
+function renderCtrl() {
+  const st = S.run.state;
+  const pill = $('#statePill');
+  pill.className = 'state ' + st;
+  pill.innerHTML = `<span class="dot"></span>${{ prep: 'Подготовка', rec: 'Запись', pause: 'Пауза', done: 'Завершён' }[st]}`;
+  if (st === 'pause') pill.dataset.tip = 'Запись продолжается, отрезок помечен'; else if (st === 'prep') pill.dataset.tip = 'На диск не пишется, держим 5 минут предзаписи'; else delete pill.dataset.tip;
+  const c = $('#ctrl');
+  const stopOff = `<button class="btn" aria-disabled="true" data-tip="Стоп — только из паузы">■ Стоп</button>`;
+  if (st === 'prep') c.innerHTML = `<button class="btn rec" data-act="start">● Старт</button><button class="btn" disabled>❚❚ Пауза</button>${stopOff}`;
+  else if (st === 'rec') c.innerHTML = `<button class="btn warn" data-act="pause">❚❚ Пауза</button>${stopOff}`;
+  else if (st === 'pause') c.innerHTML = `<button class="btn primary" data-act="resume">▶ Продолжить</button><button class="btn rec" data-act="stop">■ Стоп</button>`;
+  else c.innerHTML = `<button class="btn" data-act="home">На главную</button>`;
+}
+function updateTop() {
+  const r = S.run, ck = $('#clock'); if (!ck) return;
+  const txt = r.t0 == null ? '—:—:—' : fmtDur(endA() - r.t0);
+  if (ck.textContent !== txt) ck.textContent = txt;
+  const box = $('#statBox'), st = alarmState();
+  if (box.dataset.k !== st.key) { box.dataset.k = st.key; box.innerHTML = statHTML(); }
+}
+
+/* ---------- список приборов ---------- */
+const openDevs = new Set(['pt', 'th']);
+function renderDevList() {
+  const r = S.run, ids = devOrder.filter(i => r.devs.has(i));
+  const block = i => {
+    const d = INST[i];
+    const vis = d.chans.filter(c => r.chans.includes(c));
+    return `<div class="dev${openDevs.has(i) ? ' open' : ''}" data-devrow="${i}">
+      <div class="dev-h" data-drag="dev" data-dev="${i}">
+        ${icon('chev', 'i chev')}<span class="dot" data-st="${i}"></span>${icon(d.icon)}<span class="nm">${esc(d.name)}</span>
+        <span class="vv" data-dv="${i}"></span><span class="all">все: ${vis.length}</span>
+        <button class="icon-btn" data-act="devMenu" data-dev="${i}" aria-label="Меню ${esc(d.name)}">${icon('more')}</button></div>
+      <div class="vz">${vis.map(c => `<div class="v" data-drag="chan" data-dev="${i}" data-chan="${c}">${KIND[CH[c].kind]}<span class="nm">${esc(CH[c].name)}</span><span class="vv" data-cv="${c}"></span>${c.startsWith('th:roi') ? `<button class="icon-btn" data-act="roiDel" data-n="${c.slice(6)}" data-tip="Удалить точку" aria-label="Удалить точку">${icon('x')}</button>` : ''}</div>`).join('')}</div>
+    </div>`;
+  };
+  const direct = ids.filter(i => INST[i].group === 'direct'), mk = ids.filter(i => INST[i].group === 'mk'), rest = ids.filter(i => ['manual', 'calc'].includes(INST[i].group));
+  $('#devList').innerHTML = direct.map(block).join('')
+    + (mk.length ? `<div class="gw${S.mkDown ? ' err' : ''}" data-gw="1">${icon('chip')}<b>${GW.name}</b><span class="cn">${esc(GW.conn)}</span><span class="dot ${S.mkDown ? 'err' : 'ok'}"></span></div>` + mk.map(block).join('') : '')
+    + (rest.length ? `<div class="gw"><b>Ручные и вычисляемые</b></div>` + rest.map(block).join('') : '');
+  updateSide();
+}
+function updateSide() {
+  const r = S.run; if (!r) return;
+  for (const i of r.devs) {
+    const d = INST[i], dot = $(`[data-st="${i}"]`); if (!dot) continue;
+    const lost = isLost(i);
+    let st = 'ok', age = null;
+    const first = d.chans.find(c => r.data[c] && CH[c].gen);
+    if (first) { const t = r.data[first].t; age = t.length ? endA() - t[t.length - 1] : Infinity; }
+    if (lost) st = 'err'; else if (d.group === 'manual') st = ''; else if (r.state !== 'done' && age != null && age > 3 / (rateOf(CH[first]) || 1) + 1) st = 'warn';
+    dot.className = 'dot ' + st;
+    $(`[data-devrow="${i}"]`).classList.toggle('lost', lost);
+    const dv = $(`[data-dv="${i}"]`);
+    if (lost) { dv.textContent = 'нет связи'; dv.classList.add('stale'); }
+    else {
+      dv.classList.remove('stale');
+      const c = d.chans.find(c => CH[c].kind === 'ts' || CH[c].kind === 'pts');
+      if (i === 'th') dv.textContent = `${d.set.fps} к/с`; else if (i === 'cam') dv.textContent = `${d.set.fps} к/с`;
+      else if (c) { const v = lastVal(c); dv.textContent = v == null ? '—' : `${fmtV(v, CH[c].dp)} ${CH[c].unit}`; }
+    }
+    for (const c of d.chans) {
+      const el = $(`[data-cv="${CH[c].id}"]`); if (!el) continue;
+      const k = CH[c].kind;
+      if (k === 'ts' || k === 'pts') { const v = lastVal(c); el.textContent = lost ? '—' : v == null ? '—' : `${fmtV(v, CH[c].dp)} ${CH[c].unit}`; }
+      else el.textContent = KIND_NAME[k];
+    }
+  }
+  const gw = $('[data-gw]'); if (gw) { gw.classList.toggle('err', S.mkDown); const d = $('.dot', gw); if (d) d.className = 'dot ' + (S.mkDown ? 'err' : 'ok'); }
+}
+
+/* ---------- журнал ---------- */
+const JG = { user: '✎', sys: '·', warn: '⚠', crit: '✕', set: '⚙', manual: '✚' };
+function renderJournal(scroll) {
+  const el = $('#jList'); if (!el) return;
+  const r = S.run;
+  const items = r.journal.filter(j => S.jf === 'all' || (S.jf === 'user' ? ['user', 'manual'].includes(j.src) : S.jf === 'sys' ? ['sys', 'set'].includes(j.src) : ['warn', 'crit'].includes(j.src)));
+  const stick = scroll || el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.innerHTML = items.map(j => `<li class="${j.src}${S.pin === j.a ? ' pin' : ''}" data-act="jpin" data-a="${j.a}">
+    <time>${r.t0 != null ? fmtClock(j.a - r.t0) : hhmmss(wallOf(j.a)).slice(0, 5)}</time><span class="g">${JG[j.src]}</span>
+    <span class="tx">${esc(j.text)}${j.by ? ` <span class="by">· ${esc(j.by)}</span>` : ''}</span></li>`).join('');
+  if (stick) el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- панели ---------- */
+const colorVar = i => `var(--s${(i % 8) + 1})`;
+function seriesColors(p) {
+  const used = new Set(), out = {};
+  for (const id of p.series) { let c = CH[id].color || 0; while (used.has(c % 8) && used.size < 8) c++; used.add(c % 8); out[id] = c % 8; }
+  return out;
+}
+function panelTitle(p) {
+  const devs = [...new Set(p.series.map(id => CH[id].dev))];
+  if (p.kind === 'frame' || p.kind === 'video' || p.kind === 'profile') return `${esc(INST[devs[0]].name)} <small>· ${esc(CH[p.series[0]].name)}</small>`;
+  if (devs.length === 1) return esc(INST[devs[0]].name) + (p.series.length === 1 ? ` <small>· ${esc(CH[p.series[0]].name)}</small>` : '');
+  return devs.map(d => esc(INST[d].name)).join(' + ');
+}
+function panelHTML(p, floating) {
+  const wc = floating ? '' : p.w === 2 ? ' w2' : p.w === 3 ? ' w3' : '';
+  return `<section class="panel${wc}" data-panel="${p.id}">
+    <header class="p-h"><span class="t">${panelTitle(p)}${p.kind === 'frame' ? '<span class="ii" tabindex="0" data-tip="Клик по кадру — точка замера.\nПравый клик по точке — удалить." aria-label="Точки замера">i</span>' : ''}</span><div class="p-tools">
+      ${p.kind === 'frame' ? `<button class="icon-btn" data-act="roiClear" data-tip="Удалить все точки" aria-label="Удалить все точки"${rois.length ? '' : ' hidden'}>${icon('erase')}</button>` : ''}
+      ${floating ? '' : `<button class="icon-btn" data-act="wide" data-p="${p.id}" data-tip="Ширина: 1 → 2 → вся строка" aria-label="Ширина панели">${icon('wide')}</button>
+      <button class="icon-btn" data-act="detach" data-p="${p.id}" data-tip="В отдельное окно" aria-label="В отдельное окно">${icon('pop')}</button>`}
+      <button class="icon-btn" data-act="closePanel" data-p="${p.id}" data-tip="Убрать панель" aria-label="Убрать панель">${icon('x')}</button></div></header>
+    <div class="p-lg" data-lg="${p.id}"></div>
+    <div class="p-b"><canvas data-cv-panel="${p.id}"${p.kind === 'frame' ? ' class="clickable"' : ''}></canvas></div>
+    <div class="drop"></div>
+  </section>`;
+}
+function renderDock() {
+  const r = S.run, dock = $('#dock');
+  const docked = r.panels.filter(p => !p.float);
+  dock.classList.toggle('empty', !docked.length);
+  dock.innerHTML = (r.state === 'done' ? `<div class="done-bar"><b>Опыт завершён · ${fmtDur(r.doneA - r.t0)}</b><code>runs/2026-09-30_${hhmmss(wallOf(r.t0)).replace(/:/g, '')}_${esc(r.name)}/</code><span class="sp"></span><button class="btn sm" data-act="analysis">Открыть в анализе</button><button class="btn sm primary" data-act="home">На главную</button></div>` : '')
+    + `<div class="dgrid">` + docked.map(p => panelHTML(p, false)).join('')
+    + `<div class="dropzone" data-zone="1"><div><b>${isPhone() ? 'Нажмите на график в «Приборах»' : 'Перетащите график сюда'}</b><p>${isPhone() ? 'Долгое нажатие на прибор — все графики' : 'Alt — все графики прибора'}</p></div><div class="drop"></div></div></div>`;
+  renderFloats();
+  docked.forEach(renderLegend);
+}
+function renderFloats() {
+  const fl = $('#floats'); const r = S.run;
+  $$('.float', fl).forEach(el => { const p = findPanel(el.dataset.float); if (p && p.float) { const rc = el.getBoundingClientRect(); p.float.w = rc.width; p.float.h = rc.height; } });
+  fl.innerHTML = r.panels.filter(p => p.float).map(p => `<div class="float" data-float="${p.id}" style="left:${p.float.x}px;top:${p.float.y}px;width:${p.float.w}px;height:${p.float.h}px">
+      <div class="chrome" data-fdrag="${p.id}"><span class="lights"><i></i><i></i><i></i></span><span class="url" data-tip="В рабочей версии — отдельное окно браузера">localhost:8000/panel/${p.id}</span>
+      <button class="icon-btn" data-act="reattach" data-p="${p.id}" data-tip="Закрыть, панель вернётся на место" aria-label="Закрыть окно">${icon('x')}</button></div>
+      ${panelHTML(p, true)}</div>`).join('');
+  r.panels.filter(p => p.float).forEach(renderLegend);
+}
+function renderLegend(p) {
+  const el = $(`[data-lg="${p.id}"]`); if (!el) return;
+  if (p.kind === 'frame') { el.innerHTML = `<span class="lg" data-finfo="${p.id}"></span>`; return; }
+  if (p.kind === 'video') { el.innerHTML = `<span class="lg">${esc(INST.cam.set.res)} · ${esc(INST.cam.set.fps)} к/с</span>`; return; }
+  const col = seriesColors(p), units = unitsOf(p);
+  el.innerHTML = p.series.map(id => { const c = CH[id]; const right = units.length > 1 && units.indexOf(c.unit) === 1;
+    return `<span class="lg" style="--c:${colorVar(col[id])}"><i class="${c.kind === 'pts' ? 'pt' : ''}"></i>${p.series.length > 1 && CH[id].dev !== CH[p.series[0]].dev ? esc(INST[c.dev].name) + ' · ' : ''}${esc(c.name)}${right ? ' <span class="ax">справа</span>' : ''} <b data-lv="${p.id}|${id}">—</b>${p.kind === 'profile' ? '' : ' ' + esc(c.unit)}${p.series.length > 1 ? `<button class="rx" data-act="rmSeries" data-p="${p.id}" data-c="${id}" aria-label="Убрать ${esc(c.name)}">×</button>` : ''}</span>`; }).join('')
+    + (p.kind === 'profile' ? `<span class="lg"><i style="background:var(--faint)"></i>−5 мин</span>` : '');
+}
+const unitsOf = p => { const u = []; p.series.forEach(id => { if (!u.includes(CH[id].unit)) u.push(CH[id].unit); }); return u; };
+const findPanel = id => S.run.panels.find(p => p.id === id);
+
+/* ---------- правила наложения ---------- */
+function compat(p, id, unitsSoFar) {
+  const c = CH[id], k = kindGroup(c.kind);
+  if (p.series.includes(id)) return 'уже на панели';
+  if (p.kind === 'frame') return 'На кадр не накладывается. Поставьте на нём точку замера';
+  if (p.kind === 'video') return 'На видео не накладывается';
+  if (k === 'frame' || k === 'video') return 'Кадр и видео — только своей панелью';
+  if (k !== p.kind) return p.kind === 'profile' ? 'На профиль накладывается только профиль' : 'Профиль не накладывается на временной ряд';
+  if (!unitsSoFar.includes(c.unit) && unitsSoFar.length >= 2) return `Третья единица (${c.unit}): у панели уже две оси`;
+  return null;
+}
+function planDrop(target, ids) {
+  if (target.type === 'new') {
+    const groups = groupForNew(ids);
+    return { ok: true, label: groups.length > 1 ? `Новые панели: ${groups.length}` : 'Новая панель', apply: () => { groups.forEach(g => S.run.panels.push(panel(g))); } };
+  }
+  const p = findPanel(target.id); const units = unitsOf(p); const ok = [], bad = [];
+  for (const id of ids) { const why = compat(p, id, units); if (why) bad.push(why); else { ok.push(id); if (!units.includes(CH[id].unit)) units.push(CH[id].unit); } }
+  if (!ok.length) return { ok: false, label: bad[0] };
+  return { ok: true, label: ok.length < ids.length ? `Наложить ${ok.length} из ${ids.length}` : 'Наложить', apply: () => { p.series.push(...ok); if (bad.length) toast(`Наложено ${ok.length} из ${ids.length}. ${bad.find(b => b !== 'уже на панели') || ''}`); } };
+}
+function groupForNew(ids) {
+  const out = [], byUnit = {};
+  for (const id of ids) {
+    const c = CH[id], k = kindGroup(c.kind);
+    if (k !== 'ts') { out.push([id]); continue; }
+    (byUnit[c.unit] = byUnit[c.unit] || []).push(id);
+  }
+  return [...Object.values(byUnit), ...out];
+}
+const devViz = devId => INST[devId].chans.filter(c => S.run.chans.includes(c));
+function addPanels(ids) { const plan = planDrop({ type: 'new' }, ids); plan.apply(); renderDock(); }
+
+/* ================= рисование ================= */
+let TOK = null;
+function readTok() {
+  const cs = getComputedStyle(document.documentElement), g = k => cs.getPropertyValue(k).trim();
+  TOK = { fg: g('--fg'), muted: g('--muted'), faint: g('--faint'), grid: g('--grid'), line: g('--line'), panel: g('--panel'), accent: g('--accent'), pause: g('--pause'), rec: g('--rec'), err: g('--err'), s: [1, 2, 3, 4, 5, 6, 7, 8].map(i => g('--s' + i)) };
+}
+function sizeCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return null;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function drawAll() {
+  readTok();
+  for (const p of S.run.panels) {
+    const cv = $(`[data-cv-panel="${p.id}"]`); if (!cv) continue;
+    const g = sizeCanvas(cv); if (!g) continue;
+    if (p.kind === 'ts') drawTS(p, g); else if (p.kind === 'frame') drawFrame(p, g); else if (p.kind === 'profile') drawProfile(p, g); else if (p.kind === 'video') drawVideo(g);
+  }
+}
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
+const T_STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+const MIN_SPAN = { '°C': 2, 'ppm': 200, '%': 2, 'Па': 20, 'г/м³': 1, 'г': 1 };
+function yRange(p, units, tA, tB) {
+  return units.map(u => {
+    let mn = Infinity, mx = -Infinity;
+    for (const id of p.series) { if (CH[id].unit !== u) continue; const d = S.run.data[id]; if (!d) continue;
+      const i0 = Math.max(0, lowerBound(d.t, tA) - 1), i1 = Math.min(d.v.length, lowerBound(d.t, tB) + 1);
+      for (let i = i0; i < i1; i++) { const v = d.v[i]; if (v < mn) mn = v; if (v > mx) mx = v; } }
+    if (!isFinite(mn)) for (const id of p.series) { if (CH[id].unit !== u) continue; const d = S.run.data[id]; if (!d) continue; for (const v of d.v) { if (v < mn) mn = v; if (v > mx) mx = v; } }
+    if (!isFinite(mn)) { mn = 0; mx = 1; }
+    const ms = MIN_SPAN[u] || 1; if (mx - mn < ms) { const c = (mx + mn) / 2; mn = c - ms / 2; mx = c + ms / 2; }
+    const pad = (mx - mn) * .08; mn -= pad; mx += pad;
+    const st = niceStep(mx - mn, 4); return { u, mn, mx, st };
+  });
+}
+function drawTS(p, { ctx, w, h }) {
+  const r = S.run, ref = refT(), tEnd = endA() - ref;
+  const tStart = S.win === 'all' ? r.fromA - ref : tEnd - S.win;
+  const units = unitsOf(p), L = 50, R = units.length > 1 ? 50 : 14, T = 8, B = 22, pw = w - L - R, ph = h - T - B;
+  if (pw < 20 || ph < 20) return;
+  const X = t => L + (t - tStart) / (tEnd - tStart) * pw;
+  const ys = yRange(p, units, tStart + ref, tEnd + ref);
+  const Y = (v, k) => T + ph - (v - ys[k].mn) / (ys[k].mx - ys[k].mn) * ph;
+  p.geo = { L, pw, tStart, tEnd };
+  ctx.font = '11px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
+  // пауза: запись идёт, отрезок помечен
+  for (const q of r.pauses) { const a = X(q.a), b = X(q.b != null ? q.b : (r.state === 'pause' ? tEnd : q.a)); if (b < L || a > L + pw) continue;
+    ctx.save(); ctx.globalAlpha = .13; ctx.fillStyle = TOK.pause; ctx.fillRect(Math.max(L, a), T, Math.min(L + pw, b) - Math.max(L, a), ph); ctx.restore(); }
+  if (r.t0 == null || tStart < 0) { const b = X(r.t0 == null ? tEnd : 0); ctx.save(); ctx.globalAlpha = .05; ctx.fillStyle = TOK.fg; ctx.fillRect(L, T, Math.min(pw, b - L), ph); ctx.restore(); }
+  // сетка и оси
+  ctx.strokeStyle = TOK.grid; ctx.lineWidth = 1; ctx.fillStyle = TOK.muted;
+  const y0 = ys[0]; ctx.textAlign = 'right';
+  for (let v = Math.ceil(y0.mn / y0.st) * y0.st; v <= y0.mx; v += y0.st) { const y = Math.round(Y(v, 0)) + .5; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); ctx.fillText(fmtAxis(v, y0.st), L - 6, y); }
+  if (ys[1]) { ctx.textAlign = 'left'; const y1 = ys[1]; for (let v = Math.ceil(y1.mn / y1.st) * y1.st; v <= y1.mx; v += y1.st) ctx.fillText(fmtAxis(v, y1.st), L + pw + 6, Y(v, 1)); }
+  ctx.fillStyle = TOK.faint; ctx.textAlign = 'left'; ctx.fillText(units[0], 4, T + 4); if (units[1]) { ctx.textAlign = 'right'; ctx.fillText(units[1], w - 4, T + 4); }
+  const span = tEnd - tStart, st = T_STEPS.find(s => span / s <= 7) || 7200;
+  ctx.textAlign = 'center'; ctx.fillStyle = TOK.muted; ctx.textBaseline = 'alphabetic';
+  for (let t = Math.ceil(tStart / st) * st; t <= tEnd; t += st) { const x = Math.round(X(t)) + .5; ctx.strokeStyle = TOK.grid; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke(); ctx.fillText(st >= 60 ? String(Math.round(t / 60)).replace('-', '−') : fmtClock(t), x, h - 6); }
+  ctx.textAlign = 'left'; ctx.fillStyle = TOK.faint; ctx.fillText(st >= 60 ? 't, мин' : 't, мин:с', 4, h - 6);
+  // старт и метки журнала
+  ctx.save(); ctx.beginPath(); ctx.rect(L, T, pw, ph); ctx.clip();
+  if (r.t0 != null && 0 >= tStart) { ctx.strokeStyle = TOK.rec; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(X(0) + .5, T); ctx.lineTo(X(0) + .5, T + ph); ctx.stroke(); }
+  for (const j of r.journal) { if (!['user', 'warn', 'crit', 'set', 'manual'].includes(j.src)) continue; const x = X(j.a - ref); if (x < L || x > L + pw) continue;
+    const pinned = S.pin === j.a; ctx.strokeStyle = j.src === 'crit' ? TOK.err : j.src === 'warn' ? TOK.pause : pinned ? TOK.accent : TOK.faint; ctx.lineWidth = pinned ? 2 : 1; ctx.setLineDash(pinned ? [] : [3, 3]); ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, T); ctx.lineTo(Math.round(x) + .5, T + ph); ctx.stroke(); }
+  ctx.setLineDash([]);
+  // серии
+  const col = seriesColors(p);
+  for (const id of p.series) {
+    const d = r.data[id]; if (!d || !d.t.length) continue;
+    const k = units.indexOf(CH[id].unit), color = TOK.s[col[id]];
+    const i0 = Math.max(0, lowerBound(d.t, tStart + ref) - 1), i1 = Math.min(d.t.length, lowerBound(d.t, tEnd + ref) + 1);
+    if (CH[id].kind === 'pts') {
+      for (let i = i0; i < i1; i++) { const x = X(d.t[i] - ref), y = Y(d.v[i], k); ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = TOK.panel; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke(); }
+      continue;
+    }
+    const gap = 3 / (rateOf(CH[id]) || 1) + .5;
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.beginPath();
+    let bx = null, first, mn, mx, last, prevT = null, started = false;
+    const flush = () => { if (bx == null) return; if (!started) { ctx.moveTo(bx, first); started = true; } else ctx.lineTo(bx, first); if (mn !== mx) { ctx.lineTo(bx, mn); ctx.lineTo(bx, mx); } ctx.lineTo(bx, last); };
+    for (let i = i0; i < i1; i++) {
+      const t = d.t[i]; if (prevT != null && t - prevT > gap) { flush(); bx = null; started = false; }
+      prevT = t; const x = Math.round(X(t - ref)), y = Y(d.v[i], k);
+      if (x !== bx) { flush(); bx = x; first = mn = mx = last = y; } else { if (y < mn) mn = y; if (y > mx) mx = y; last = y; }
+    }
+    flush(); ctx.stroke();
+    const li = i1 - 1; if (li >= 0 && d.t[li] - ref <= tEnd && d.t[li] - ref >= tStart) { ctx.beginPath(); ctx.arc(X(d.t[li] - ref), Y(d.v[li], k), 2.6, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+  }
+  if (S.cursor != null && S.cursor >= tStart && S.cursor <= tEnd) { ctx.strokeStyle = TOK.fg; ctx.globalAlpha = .45; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(X(S.cursor)) + .5, T); ctx.lineTo(Math.round(X(S.cursor)) + .5, T + ph); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.restore();
+  // легенда: значение под курсором или последнее
+  for (const id of p.series) {
+    const b = $(`[data-lv="${p.id}|${id}"]`); if (!b) continue;
+    const d = r.data[id]; let v = null;
+    if (d && d.v.length) { if (S.cursor != null) { const i = lowerBound(d.t, S.cursor + ref); const j = clamp(i, 0, d.v.length - 1); const jj = (j > 0 && Math.abs(d.t[j - 1] - S.cursor - ref) < Math.abs(d.t[j] - S.cursor - ref)) ? j - 1 : j; v = CH[id].kind === 'pts' && Math.abs(d.t[jj] - S.cursor - ref) > 30 ? null : d.v[jj]; } else v = d.v[d.v.length - 1]; }
+    if (isLost(CH[id].dev) && S.cursor == null) v = null;
+    const txt = fmtV(v, CH[id].dp); if (b.textContent !== txt) b.textContent = txt;
+    const oos = id === 'scd:co2' && INST.scd.set.range === 'spec' && v > 5000; b.classList.toggle('oos', !!oos); b.title = oos ? 'вне паспортной точности (> 5000 ppm)' : '';
+  }
+}
+const fmtAxis = (v, st) => { const dp = st >= 1 ? 0 : st >= .1 ? 1 : 2; return Math.abs(v) >= 10000 ? (v / 1000).toFixed(0) + 'k' : v.toFixed(dp).replace('.', ',').replace('-', '−'); };
+
+/* ---------- тепловизор ---------- */
+function lut(stops) { const o = new Uint8ClampedArray(768); for (let i = 0; i < 256; i++) { const x = i / 255; let j = 0; while (j < stops.length - 2 && x > stops[j + 1][0]) j++; const a = stops[j], b = stops[j + 1], f = (x - a[0]) / ((b[0] - a[0]) || 1); for (let k = 0; k < 3; k++) o[i * 3 + k] = a[k + 1] + (b[k + 1] - a[k + 1]) * f; } return o; }
+const LUTS = {
+  iron: lut([[0, 0, 0, 14], [.18, 40, 0, 112], [.38, 146, 0, 146], [.58, 226, 46, 40], [.76, 255, 142, 0], [.9, 255, 222, 44], [1, 255, 255, 232]]),
+  rainbow: lut([[0, 22, 0, 120], [.2, 0, 64, 255], [.4, 0, 208, 212], [.6, 44, 218, 44], [.8, 255, 210, 0], [1, 255, 32, 0]]),
+  gray: lut([[0, 12, 12, 12], [1, 246, 246, 246]]),
+};
+const off = document.createElement('canvas'); off.width = IW; off.height = IH;
+const offCtx = off.getContext('2d'); const img = offCtx.createImageData(IW, IH); const buf = new Float32Array(IW * IH);
+let rois = [];
+function drawFrame(p, { ctx, w, h }) {
+  const r = S.run, t = relOf(r, endA()), e = epsNow(), set = INST.th.set;
+  const colT = new Float32Array(IW); for (let c = BX0; c < BX1; c++) colT[c] = corpusT(colMM(c), t);
+  let mn = Infinity, mx = -Infinity;
+  for (let row = 0; row < IH; row++) for (let c = 0; c < IW; c++) { const v = apparent(c, row, t, e, (c >= BX0 && c < BX1) ? colT[c] : null); buf[row * IW + c] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
+  if (set.scale === 'fix') { mn = 20; mx = 150; } else if (mx - mn < 6) mx = mn + 6;
+  const L = LUTS[set.pal] || LUTS.iron;
+  for (let i = 0; i < IW * IH; i++) { const q = clamp(Math.round((buf[i] - mn) / (mx - mn) * 255), 0, 255) * 3; img.data[i * 4] = L[q]; img.data[i * 4 + 1] = L[q + 1]; img.data[i * 4 + 2] = L[q + 2]; img.data[i * 4 + 3] = 255; }
+  offCtx.putImageData(img, 0, 0);
+  const bw = 12, room = w - bw - 44;
+  const sc = Math.min(room / IW, (h - 8) / IH), dw = IW * sc, dh = IH * sc, ox = Math.max(4, (room - dw) / 2), oy = (h - dh) / 2;
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(off, ox, oy, dw, dh);
+  p.geo = { ox, oy, sc };
+  // полоса и ROI
+  ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1;
+  ctx.strokeRect(ox + BX0 * sc, oy + SY0 * sc, (BX1 - BX0) * sc, (SY1 - SY0) * sc); ctx.restore();
+  ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
+  for (const q of rois) { const x = ox + (q.col + .5) * sc, y = oy + (q.row + .5) * sc, v = buf[q.row * IW + q.col];
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5); ctx.stroke();
+    const tx = `${q.name} ${fmtV(v, 1)}`; ctx.fillStyle = 'rgba(0,0,0,.6)'; const tw = ctx.measureText(tx).width + 6; ctx.fillRect(x + 6, y - 13, tw, 13); ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(tx, x + 9, y - 6.5); }
+  // шкала
+  const bx = ox + dw + 12; for (let i = 0; i < dh; i++) { const q = Math.round((1 - i / dh) * 255) * 3; ctx.fillStyle = `rgb(${L[q]},${L[q + 1]},${L[q + 2]})`; ctx.fillRect(bx, oy + i, bw, 1.5); }
+  ctx.fillStyle = TOK.muted; ctx.textAlign = 'left'; ctx.fillText(fmtV(mx, 0) + '°', bx + bw + 4, oy + 6); ctx.fillText(fmtV(mn, 0) + '°', bx + bw + 4, oy + dh - 6);
+  const fi = $(`[data-finfo="${p.id}"]`);
+  if (fi) fi.textContent = `${set.fps} к/с · ε ${String(e).replace('.', ',')} · макс ${fmtV(stripeMax(t, e), 1)} °C`;
+}
+function drawProfile(p, { ctx, w, h }) {
+  const r = S.run, t = relOf(r, endA()), e = epsNow(), L = 50, R = 14, T = 8, B = 24, pw = w - L - R, ph = h - T - B;
+  if (pw < 20 || ph < 20) return;
+  const tPast = t == null ? null : Math.max(0, t - 300);
+  const cur = [], past = [];
+  for (let c = BX0; c < BX1; c++) { cur.push([colMM(c), apparent(c, 60, t, e)]); past.push([colMM(c), apparent(c, 60, tPast, e)]); }
+  let mn = Math.min(...cur.map(q => q[1]), ...past.map(q => q[1])), mx = Math.max(...cur.map(q => q[1]), ...past.map(q => q[1]));
+  if (mx - mn < 4) { mn -= 2; mx += 2; } const pad = (mx - mn) * .08; mn -= pad; mx += pad; const st = niceStep(mx - mn, 4);
+  const X = x => L + x / LEN * pw, Y = v => T + ph - (v - mn) / (mx - mn) * ph;
+  ctx.font = '11px "JetBrains Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right'; ctx.fillStyle = TOK.muted; ctx.strokeStyle = TOK.grid; ctx.lineWidth = 1;
+  for (let v = Math.ceil(mn / st) * st; v <= mx; v += st) { const y = Math.round(Y(v)) + .5; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); ctx.fillText(fmtAxis(v, st), L - 6, y); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  for (let x = 0; x <= LEN; x += 30) { const xx = Math.round(X(x)) + .5; ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, T + ph); ctx.stroke(); ctx.fillText(x + (x === LEN ? ' мм' : ''), xx, h - 7); }
+  ctx.fillStyle = TOK.faint; ctx.textAlign = 'left'; ctx.fillText('°C', 4, T + 8);
+  const line = (pts, color, dash) => { ctx.strokeStyle = color; ctx.lineWidth = 1.7; ctx.setLineDash(dash); ctx.beginPath(); pts.forEach(([x, v], i) => i ? ctx.lineTo(X(x), Y(v)) : ctx.moveTo(X(x), Y(v))); ctx.stroke(); ctx.setLineDash([]); };
+  if (t != null) line(past, TOK.faint, [4, 3]);
+  const col = seriesColors(p); line(cur, TOK.s[col[p.series[0]]], []);
+  const b = $(`[data-lv="${p.id}|${p.series[0]}"]`); if (b) b.textContent = `макс ${fmtV(Math.max(...cur.map(q => q[1])), 1)} °C`;
+}
+function drawVideo({ ctx, w, h }) {
+  const r = S.run, sc = Math.min(w / 16, (h - 4) / 9), dw = 16 * sc, dh = 9 * sc, ox = (w - dw) / 2, oy = (h - dh) / 2;
+  const g = ctx.createLinearGradient(0, oy, 0, oy + dh); g.addColorStop(0, '#2a3038'); g.addColorStop(1, '#14181d');
+  ctx.fillStyle = g; ctx.fillRect(ox, oy, dw, dh);
+  ctx.fillStyle = '#3a414b'; ctx.fillRect(ox, oy + dh * .72, dw, dh * .28);
+  ctx.fillStyle = '#8b939c'; ctx.beginPath(); ctx.roundRect(ox + dw * .25, oy + dh * .45, dw * .42, dh * .2, dh * .05); ctx.fill();
+  ctx.fillStyle = '#16181b'; ctx.fillRect(ox + dw * .25, oy + dh * .53, dw * .42, dh * .04);
+  ctx.fillStyle = '#56606b'; ctx.beginPath(); ctx.ellipse(ox + dw * .76, oy + dh * .55, dw * .09, dh * .16, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#6b7580'; ctx.lineWidth = dh * .035; ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = ox + dw * (.05 + i * .01), y = oy + dh * .55 + Math.sin(i * 1.6) * dh * .015; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  ctx.font = `${Math.max(10, dh * .06)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'top'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.85)';
+  const d = wallOf(endA()); ctx.fillText(`2026-09-30 ${hhmmss(d)}`, ox + 8, oy + 8);
+  if (r.state === 'rec' || r.state === 'pause') { ctx.fillStyle = '#ff5a4e'; ctx.beginPath(); ctx.arc(ox + dw - 44, oy + 14, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText('REC', ox + dw - 35, oy + 8); }
+}
+
+/* ---------- шкала времени опыта ---------- */
+function updateTimeline() {
+  const r = S.run, el = $('#tl'); if (!el) return;
+  const ref = refT(), a0 = r.fromA - ref, a1 = endA() - ref, span = (a1 - a0) || 1;
+  const P = x => clamp((x - a0) / span * 100, 0, 100);
+  let h = '';
+  if (r.t0 == null) h += `<i class="prep" style="left:0;width:100%"></i><span class="tx" style="left:8px">предзапись 5:00</span>`;
+  else {
+    h += `<i class="pre" style="left:0;width:${P(0)}%"></i><i class="recd" style="left:${P(0)}%;width:${100 - P(0)}%"></i>`;
+    for (const q of r.pauses) { const b = q.b != null ? q.b : a1; h += `<i class="pz" style="left:${P(q.a)}%;width:${P(b) - P(q.a)}%"></i>`; }
+    for (const j of r.journal) if (['user', 'warn', 'crit', 'set', 'manual'].includes(j.src)) h += `<b class="${j.src}" style="left:${P(j.a - ref)}%"></b>`;
+    h += `<span class="tx" style="left:6px">${fmtClock(a0)}</span><span class="tx" style="left:calc(${P(0)}% + 5px)">0:00</span>`;
+  }
+  const ws = S.win === 'all' ? a0 : Math.max(a0, a1 - S.win);
+  h += `<span class="win" style="left:${P(ws)}%;width:${100 - P(ws)}%"></span>`;
+  el.innerHTML = h;
+}
+
+/* ================= перетаскивание ================= */
+let drag = null;
+function onDown(e) {
+  if (S.screen !== 'exp' || e.button !== 0) return;
+  const el = e.target.closest('[data-drag]'); if (!el || e.target.closest('[data-act]')) return;
+  const devId = el.dataset.dev, chan = el.dataset.chan || null;
+  drag = { x0: e.clientX, y0: e.clientY, devId, chan, onHead: !chan, alt: e.altKey, touch: e.pointerType !== 'mouse', lpFired: false, started: false, el };
+  if (drag.touch) drag.lp = setTimeout(() => {
+    if (!drag || drag.started) return;
+    drag.lpFired = true; navigator.vibrate && navigator.vibrate(18);
+    if (isPhone()) { const ids = drag.onHead ? devViz(drag.devId) : [drag.chan]; addPanels(ids); toast(drag.onHead ? `${INST[drag.devId].name}: добавлено графиков — ${ids.length}` : 'График добавлен'); drag = null; return; }
+    el.classList.add('lp');
+  }, 450);
+}
+function dragIds() { return (drag.onHead || drag.alt || (drag.touch && drag.lpFired && drag.onHead)) ? devViz(drag.devId) : [drag.chan]; }
+function onMove(e) {
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+    if (drag.touch && !drag.lpFired) { clearTimeout(drag.lp); drag = null; return; }
+    if (drag.onHead && !drag.alt && !e.altKey && !drag.lpFired) { drag = null; return; }   // прибор целиком — только с Alt или долгим нажатием
+    drag.started = true; clearTimeout(drag.lp); closeCtx();
+  }
+  if (e.pointerType === 'mouse') drag.alt = drag.alt || e.altKey;
+  const ids = dragIds();
+  const g = $('#ghost'); g.hidden = false; g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px';
+  g.innerHTML = ids.length > 1 ? `${icon(INST[drag.devId].icon)}${esc(INST[drag.devId].name)} <span class="n">все: ${ids.length}</span>` : `${KIND[CH[ids[0]].kind].replace('<svg', '<svg class="i" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5"')}${esc(INST[drag.devId].name)} · ${esc(CH[ids[0]].name)}`;
+  const tgt = targetAt(e.clientX, e.clientY);
+  $$('.d-ok, .d-bad').forEach(x => x.classList.remove('d-ok', 'd-bad'));
+  drag.plan = null;
+  if (tgt) { const plan = planDrop(tgt, ids); drag.plan = plan; const box = tgt.el; box.classList.add(plan.ok ? 'd-ok' : 'd-bad'); const dz = $('.drop', box); if (dz) dz.textContent = plan.label; }
+}
+function onUp() {
+  if (!drag) return;
+  clearTimeout(drag.lp); drag.el.classList.remove('lp');
+  if (drag.started) { $('#ghost').hidden = true; $$('.d-ok, .d-bad').forEach(x => x.classList.remove('d-ok', 'd-bad'));
+    if (drag.plan && drag.plan.ok) { drag.plan.apply(); renderDock(); } else if (drag.plan) toast(drag.plan.label); }
+  else if (isPhone() && drag.chan && !drag.lpFired) { addPanels([drag.chan]); toast('График добавлен на вкладку «Графики»'); }
+  drag = null;
+}
+function targetAt(x, y) {
+  const el = document.elementFromPoint(x, y); if (!el) return null;
+  const p = el.closest('[data-panel]'); if (p) return { type: 'panel', id: p.dataset.panel, el: p };
+  const z = el.closest('.dropzone'); if (z) return { type: 'new', el: z };
+  const d = el.closest('.dock'); if (d) { const zz = $('.dropzone', d); return { type: 'new', el: zz }; }
+  return null;
+}
+document.addEventListener('pointerdown', onDown);
+document.addEventListener('pointermove', onMove);
+document.addEventListener('pointerup', onUp);
+document.addEventListener('pointercancel', () => { if (drag) { clearTimeout(drag.lp); drag.el.classList.remove('lp'); $('#ghost').hidden = true; drag = null; } });
+document.addEventListener('touchmove', e => { if (drag && (drag.started || drag.lpFired)) e.preventDefault(); }, { passive: false });
+addEventListener('keydown', e => { if (e.key === 'Alt') { document.body.classList.add('alt'); e.preventDefault(); } if (e.key === 'Escape') { closeCtx(); closeModal(); } });
+addEventListener('keyup', e => { if (e.key === 'Alt') { document.body.classList.remove('alt'); e.preventDefault(); } });
+addEventListener('blur', () => document.body.classList.remove('alt'));
+
+/* плавающие окна: перенос за заголовок */
+let fdrag = null;
+document.addEventListener('pointerdown', e => {
+  const ch = e.target.closest('[data-fdrag]'); if (!ch || e.target.closest('[data-act]')) return;
+  const p = findPanel(ch.dataset.fdrag); const win = ch.parentElement;
+  fdrag = { p, win, dx: e.clientX - p.float.x, dy: e.clientY - p.float.y }; ch.setPointerCapture(e.pointerId);
+});
+document.addEventListener('pointermove', e => { if (!fdrag) return; const f = fdrag.p.float; f.x = clamp(e.clientX - fdrag.dx, 0, innerWidth - 80); f.y = clamp(e.clientY - fdrag.dy, 0, innerHeight - 40); fdrag.win.style.left = f.x + 'px'; fdrag.win.style.top = f.y + 'px'; });
+document.addEventListener('pointerup', () => { if (fdrag) { const r = fdrag.win.getBoundingClientRect(); fdrag.p.float.w = r.width; fdrag.p.float.h = r.height; fdrag = null; } });
+
+/* курсор времени: наведение синхронно по всем графикам */
+document.addEventListener('pointermove', e => {
+  if (S.screen !== 'exp' || drag) return;
+  const cv = e.target.closest && e.target.closest('canvas[data-cv-panel]');
+  if (!cv) { if (S.cursor != null) S.cursor = null; return; }
+  const p = findPanel(cv.dataset.cvPanel); if (!p || p.kind !== 'ts' || !p.geo) { S.cursor = null; return; }
+  const rc = cv.getBoundingClientRect(), x = e.clientX - rc.left;
+  S.cursor = x < p.geo.L || x > p.geo.L + p.geo.pw ? null : p.geo.tStart + (x - p.geo.L) / p.geo.pw * (p.geo.tEnd - p.geo.tStart);
+});
+
+/* ================= окно прибора ================= */
+let M = null;
+function openDevWin(devId, tab) {
+  const d = devId === 'mk1' ? GW : INST[devId];
+  const manual = d.group === 'manual';
+  M = { d, tab: tab || (manual && S.screen === 'exp' ? 'input' : 'set'), draft: { ...d.set }, names: {} };
+  renderModal(); $('#modal').hidden = false;
+}
+function renderModal() {
+  const { d } = M, isGw = d === GW;
+  const inRun = S.screen === 'exp' && S.run, lock = inRun && S.run.state === 'rec';
+  const tabs = [['set', 'Настройки'], ...(isGw ? [] : [['ch', 'Каналы']]), ['diag', 'Диагностика'], ...(d.group === 'manual' && inRun ? [['input', 'Ввод отсчёта']] : [])];
+  const status = isGw ? (S.mkDown ? '<span class="chip err"><span class="dot err"></span>нет связи</span>' : '<span class="chip ok"><span class="dot ok"></span>на связи</span>') : isLost(d.id) ? '<span class="chip err"><span class="dot err"></span>нет связи через МК-1</span>' : statusChip(d);
+  let body = '';
+  if (M.tab === 'set') body = `<div class="form" id="mForm">${formHTML(d, M.draft, lock)}</div>${lock && SCH[d.sch].some(f => f.live === false) ? '<p class="lockline">Идёт запись: поля с замком меняются на паузе.</p>' : ''}`;
+  else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${d.chans.map(id => { const c = CH[id]; const rt = rateOf(c); return `<tr><td><input type="text" data-rename="${id}" value="${esc(M.names[id] != null ? M.names[id] : c.name)}" aria-label="Имя канала"></td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${rt ? (rt >= 1 ? fmtV(rt, 0) + ' Гц' : 'раз в ' + fmtV(1 / rt, 0) + ' с') : c.kind === 'pts' ? 'вручную' : 'по кадрам'}</td></tr>`; }).join('')}</tbody></table>`;
+  else if (M.tab === 'diag') body = diagHTML(d);
+  else if (M.tab === 'input') { const c = CH[d.chans[0]]; body = `<div class="form"><div class="f-row"><label class="f-l" for="mVal">${esc(c.name)}</label><div class="f-c"><input type="number" id="mVal" step="0.01" inputmode="decimal" placeholder="${d.type === 'syringe' ? '0,65' : ''}"><span class="unit">${esc(c.unit)}</span><button class="btn sm primary" data-act="manualAdd">Записать</button></div></div></div>`; }
+  $('#modal').innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(d.name)}">
+    <div class="m-h"><span class="ic">${icon(d.icon)}</span><h3>${esc(d.name)}</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>${esc(d.model)}</span><span class="mono">${esc(d.conn)}</span>${status}</div></div>
+    <div class="m-tabs" role="tablist">${tabs.map(([v, l]) => `<button role="tab" data-act="mTab" data-v="${v}" aria-selected="${M.tab === v}">${l}</button>`).join('')}</div>
+    <div class="m-b">${body}</div>
+    <div class="m-f">${M.tab === 'set' ? `<button class="btn ghost" data-act="mReset">По умолчанию</button>` : ''}<span class="sp"></span><button class="btn" data-act="mClose">Закрыть</button>${M.tab === 'set' || M.tab === 'ch' ? '<button class="btn primary" data-act="mApply">Применить</button>' : ''}</div>
+  </div>`;
+}
+function diagHTML(d) {
+  if (d === GW) {
+    const behind = devOrder.filter(i => INST[i].group === 'mk');
+    return `<dl class="kv"><dt>Порт</dt><dd class="mono">${esc(GW.conn)}</dd><dt>Приборы за шлюзом</dt><dd>${behind.map(i => `${esc(INST[i].name)} <span class="mono" style="color:var(--muted)">${esc(INST[i].conn)}</span> ${INST[i].found ? '' : '— не отвечает'}`).join('<br>')}</dd></dl>`;
+  }
+  const r = S.run, inRun = S.screen === 'exp' && r && r.devs.has(d.id);
+  const n = inRun ? d.chans.reduce((s, c) => s + (r.data[c] ? r.data[c].v.length : 0), 0) : 0;
+  const hex = d.id === 'pt' ? '→ 01 03 00 00 00 08 44 0C\n← 01 03 10 04 FD 03 F9 04 A9 03 FB 01 59 02 83 08 AA 00 F5 …\n→ 01 03 00 20 00 08 45 C6\n← 01 03 10 05 BB 05 93 05 71 05 9B 04 67 04 E7 07 47 04 45 …'
+    : d.group === 'mk' ? `МК-1 → {"dev":"${d.id}","ch":"${d.chans[0].split(':')[1]}","t":${Math.round(S.simT)},"v":…}` : d.id === 'th' ? 'UVC YUY2 256×384 · низ кадра = T[K]·64' : '—';
+  return `<dl class="kv"><dt>Подключение</dt><dd class="mono">${esc(d.conn)}</dd><dt>Статус</dt><dd>${isLost(d.id) ? 'нет связи: не отвечает шлюз МК-1' : d.status === 'missing' ? esc(d.note || 'не найден на параметрах по умолчанию') : 'на связи'}</dd>
+    <dt>Отсчётов в опыте</dt><dd class="num">${inRun ? n.toLocaleString('ru-RU') : '—'}</dd><dt>Сбоев опроса</dt><dd class="num">0</dd></dl>
+    <div class="lbl" style="margin-bottom:6px">Последний обмен</div><pre class="hex">${esc(hex)}</pre>
+    ${d.group === 'direct' || d.group === 'mk' ? '<p style="margin-top:12px"><button class="btn sm" data-act="reconnect">Переподключить</button></p>' : ''}`;
+}
+function closeModal() { $('#modal').hidden = true; M = null; }
+function applyModal() {
+  const { d } = M, isGw = d === GW, log = S.screen === 'exp' && S.run && S.run.state !== 'done';
+  if (M.tab === 'set') M.draft = { ...M.draft, ...readForm($('#mForm')) };
+  $$('[data-rename]').forEach(el => M.names[el.dataset.rename] = el.value);
+  const changes = [];
+  for (const f of SCH[d.sch]) { if (!('def' in f)) continue; const a = d.set[f.key], b = M.draft[f.key]; if (String(a) !== String(b)) { changes.push(`${f.label.toLowerCase()} ${showVal(f, a)} → ${showVal(f, b)}`); d.set[f.key] = b; } }
+  if (!isGw) for (const [id, nm] of Object.entries(M.names)) { if (nm && nm !== CH[id].name) { changes.push(`канал «${CH[id].name}» → «${nm}»`); CH[id].name = nm; } }
+  if (changes.length && log) jpush('set', `${d.name}: ${changes.join('; ')}`, S.simT, byLabel());
+  toast(changes.length ? `${d.name}: изменений ${changes.length}${log ? ', записано в журнал' : ''}` : 'Изменений нет');
+  closeModal();
+  if (S.screen === 'exp') { renderDevList(); renderDock(); } else if (S.screen === 'settings') renderSettings(); else if (S.screen === 'select') renderSelect();
+}
+
+/* ================= контекстное меню ================= */
+function openCtx(x, y, devId) {
+  const c = $('#ctx');
+  showCtx(`<button data-act="ctxOpen" data-dev="${devId}">Окно прибора <small>двойной клик</small></button>
+    ${devId === 'mk1' ? '' : `<button data-act="ctxAll" data-dev="${devId}">Все графики <small>Alt + тащить</small></button>`}
+    <button data-act="ctxReconnect" data-dev="${devId}">Переподключить</button>`, x, y);
+}
+function showCtx(html, x, y) {
+  const c = $('#ctx'); c.innerHTML = html; c.hidden = false; const r = c.getBoundingClientRect();
+  c.style.left = Math.min(x, innerWidth - r.width - 8) + 'px'; c.style.top = Math.min(y, innerHeight - r.height - 8) + 'px';
+}
+function roiAt(cv, p, e) {
+  const rc = cv.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top;
+  return rois.find(q => Math.hypot(p.geo.ox + (q.col + .5) * p.geo.sc - x, p.geo.oy + (q.row + .5) * p.geo.sc - y) < 10);
+}
+function removeRoi(name, quiet) {
+  const id = 'th:roi' + name, r = S.run;
+  rois = rois.filter(q => q.name !== name);
+  INST.th.chans = INST.th.chans.filter(c => c !== id);
+  r.chans = r.chans.filter(c => c !== id); delete r.data[id]; delete r.next[id];
+  for (const p of r.panels) p.series = p.series.filter(c => c !== id);
+  r.panels = r.panels.filter(p => p.series.length);
+  delete CH[id];
+  if (!quiet) jpush('sys', `Тепловизор: точка ${name} удалена`);
+}
+function closeCtx() { $('#ctx').hidden = true; const p = $('#demoPop'); if (p) p.hidden = true; }
+document.addEventListener('contextmenu', e => {
+  if (S.screen !== 'exp') return;
+  const h = e.target.closest('[data-drag="dev"]'), g = e.target.closest('[data-gw]'), cv = e.target.closest('canvas[data-cv-panel]');
+  if (h) { e.preventDefault(); openCtx(e.clientX, e.clientY, h.dataset.dev); } else if (g) { e.preventDefault(); openCtx(e.clientX, e.clientY, 'mk1'); }
+  else if (cv) { const p = findPanel(cv.dataset.cvPanel); if (!p || p.kind !== 'frame' || !p.geo || !rois.length) return; const q = roiAt(cv, p, e); e.preventDefault();
+    showCtx((q ? `<button data-act="roiDel" data-n="${q.name}">Удалить точку ${q.name}</button>` : '') + '<button data-act="roiClear">Удалить все точки</button>', e.clientX, e.clientY); }
+});
+document.addEventListener('dblclick', e => {
+  if (S.screen !== 'exp') return;
+  const h = e.target.closest('[data-drag="dev"]'); if (h) { openDevWin(h.dataset.dev); return; }
+  if (e.target.closest('[data-gw="1"]')) openDevWin('mk1');
+});
+
+/* ================= тревоги, состояния, журнал ================= */
+function setState(st) {
+  const r = S.run, t = S.simT;
+  if (st === 'rec' && r.state === 'prep') { r.t0 = t; r.state = 'rec'; jpush('sys', `Старт записи, предзапись ${fmtClock(t - r.fromA)}`, t, byLabel()); }
+  else if (st === 'pause') { r.state = 'pause'; r.pauses.push({ a: t - r.t0, b: null }); jpush('sys', 'Пауза', t, byLabel()); }
+  else if (st === 'resume') { r.state = 'rec'; r.pauses[r.pauses.length - 1].b = t - r.t0; jpush('sys', 'Продолжить', t, byLabel()); }
+  else if (st === 'stop' && r.state === 'pause') {
+    r.pauses[r.pauses.length - 1].b = t - r.t0; r.doneA = t; jpush('sys', `Стоп, записано ${fmtDur(t - r.t0)}`, t, byLabel()); r.state = 'done';
+    S.finished.unshift({ name: r.name, when: '30.09 · ' + hhmmss(wallOf(r.t0)).slice(0, 5), dur: fmtDur(t - r.t0), n: r.devs.size, note: 'только что' });
+  }
+  renderCtrl(); renderDock(); updateTop(); updateTimeline();
+}
+
+/* ================= анализ (заглушка) ================= */
+function renderAnalysis() {
+  const rows = [...S.finished, ...RECENT];
+  $('#s-analysis').innerHTML = `<div class="an">
+    <div class="wiz-h"><button class="icon-btn" data-act="home" data-tip="Главная" aria-label="Главная">${icon('home')}</button><h2 style="margin:0;font:600 20px/1.2 var(--f-brand)">Анализ</h2></div>
+    <p class="note" style="border:0;padding:0">Разбор завершённого опыта откроется отдельным окном: те же панели, но из файла, с курсором по времени. Что и как сравнивать между опытами, продумаем отдельно.</p>
+    <div class="an-t"><table class="t"><thead><tr><th>Опыт</th><th>Начало</th><th>Длительность</th><th>Приборов</th><th>Заметка</th><th></th></tr></thead><tbody>
+      ${rows.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="mono">${esc(x.when)}</td><td class="mono">${esc(x.dur)}</td><td class="mono">${x.n}</td><td>${esc(x.note)}</td><td><button class="btn sm" disabled>Открыть</button></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+
+/* ================= действия ================= */
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+const ACT = {
+  home: () => { closeModal(); go('home'); },
+  toExp: () => go('exp'),
+  cancelPrep: () => { S.run = null; renderHome(); },
+  new: () => { S.sel = new Set(); S.template = 'empty'; S.draftName = `опыт_${hhmmss(wallOf(S.simT)).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runSearch(); },
+  analysis: () => { closeModal(); go('analysis'); },
+  search: runSearch,
+  view: b => { S.view = b.dataset.v; renderSelect(); },
+  sel: b => { const d = INST[b.dataset.dev]; if (!devAvailable(d)) { toast(d.status === 'missing' ? `${d.name} не найден. Параметры подключения — в ⚙` : `${d.name}: нужен ${INST[d.needs].name}`); return; }
+    S.sel.has(d.id) ? S.sel.delete(d.id) : S.sel.add(d.id); for (const i of devOrder) if (INST[i].needs && !S.sel.has(INST[i].needs)) S.sel.delete(i); keepName(); renderSelect(); },
+  gear: (b, e) => { e.stopPropagation(); keepName(); openDevWin(b.dataset.dev, 'set'); },
+  catalog: () => { keepName(); openCatalog(); },
+  catAdd: b => addFromCatalog(b.dataset.t),
+  toSettings: () => { keepName(); go('settings'); },
+  toSelect: () => go('select'),
+  startPrep: () => { keepName(); startPrep(); },
+  cfgDev: b => { S.cfgDev = b.dataset.dev; renderSettings(); },
+  cfgReset: b => { const d = INST[b.dataset.dev]; for (const f of SCH[d.sch]) if ('def' in f) d.set[f.key] = f.def; renderSettings(); },
+  start: () => setState('rec'), pause: () => setState('pause'), resume: () => setState('resume'), stop: () => setState('stop'),
+  win: b => { S.win = b.dataset.v === 'all' ? 'all' : +b.dataset.v; $$('[data-act="win"]').forEach(x => x.setAttribute('aria-pressed', x === b)); updateTimeline(); },
+  demo: b => { const p = $('#demoPop'); const was = p.hidden; closeCtx(); p.hidden = !was; b.setAttribute('aria-expanded', String(was)); },
+  speed: b => { S.speed = +b.dataset.v; $$('[data-act="speed"]').forEach(x => x.setAttribute('aria-pressed', x === b)); },
+  wide: b => { const p = findPanel(b.dataset.p), g = $('.dgrid'); const cols = g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 1;
+    const order = cols >= 3 ? [1, 2, 3] : [1, 3]; p.w = order[(order.indexOf(p.w) + 1) % order.length]; renderDock(); },
+  detach: b => { const p = findPanel(b.dataset.p); const el = b.closest('.panel').getBoundingClientRect(); p.float = { x: clamp(el.left + 40, 8, innerWidth - 480), y: clamp(el.top + 40, 8, innerHeight - 340), w: Math.min(560, innerWidth - 32), h: 340 }; renderDock(); },
+  roiDel: b => { closeCtx(); removeRoi(b.dataset.n); renderDevList(); renderDock(); },
+  roiClear: () => { closeCtx(); const n = rois.length; [...rois].forEach(q => removeRoi(q.name, true)); if (n) jpush('sys', `Тепловизор: удалены все точки (${n})`); renderDevList(); renderDock(); },
+  reattach: b => { findPanel(b.dataset.p).float = null; renderDock(); },
+  closePanel: b => { const r = S.run; r.panels = r.panels.filter(p => p.id !== b.dataset.p); renderDock(); },
+  rmSeries: b => { const p = findPanel(b.dataset.p); p.series = p.series.filter(id => id !== b.dataset.c); renderDock(); },
+  jf: b => { S.jf = b.dataset.v; $$('[data-act="jf"]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderJournal(true); },
+  alarmFilter: () => { S.jf = 'warn'; if (isPhone()) setPtab('journal'); $$('[data-act="jf"]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === 'warn')); renderJournal(true); },
+  jpin: b => { const a = +b.dataset.a; S.pin = S.pin === a ? null : a; const rel = a - refT(); if (S.pin != null && S.win !== 'all' && rel < endA() - refT() - S.win) { S.win = 'all'; $$('[data-act="win"]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === 'all')); } renderJournal(); },
+  ptab: b => setPtab(b.dataset.v),
+  devMenu: (b, e) => { e.stopPropagation(); const r = b.getBoundingClientRect(); openCtx(r.left, r.bottom + 4, b.dataset.dev); },
+  ctxOpen: b => { closeCtx(); openDevWin(b.dataset.dev); },
+  ctxAll: b => { closeCtx(); const ids = devViz(b.dataset.dev); addPanels(ids); toast(`${INST[b.dataset.dev].name}: графиков добавлено — ${ids.length}`); },
+  ctxReconnect: b => { closeCtx(); const n = b.dataset.dev === 'mk1' ? GW.name : INST[b.dataset.dev].name; jpush('sys', `${n}: переподключение, связь есть`, S.simT, byLabel()); toast(`${n}: переподключено`); },
+  mClose: closeModal, mApply: applyModal,
+  mTab: b => { if (M.tab === 'set') M.draft = { ...M.draft, ...readForm($('#mForm')) }; $$('[data-rename]').forEach(el => M.names[el.dataset.rename] = el.value); M.tab = b.dataset.v; renderModal(); },
+  mReset: () => { for (const f of SCH[M.d.sch]) if ('def' in f) M.draft[f.key] = f.def; renderModal(); },
+  devAction: b => { const d = INST[b.dataset.dev]; const v = (Math.random() - .5).toFixed(1).replace('.', ',').replace('-', '−'); if (S.screen === 'exp') jpush('set', `${d.name}: ноль снят (${v} Па)`, S.simT, byLabel()); toast(`${d.name}: ноль снят, смещение ${v} Па`); },
+  reconnect: () => { const d = M.d; if (S.screen === 'exp') jpush('sys', `${d.name}: переподключение, связь есть`, S.simT, byLabel()); toast(`${d.name}: переподключено`); },
+  manualAdd: () => { const v = num($('#mVal').value); if (!isFinite(v)) { toast('Введите число'); return; } const c = CH[M.d.chans[0]]; const d = S.run.data[c.id]; d.t.push(S.simT); d.v.push(v); jpush('manual', `${M.d.name}: ${c.name} ${fmtV(v, c.dp)} ${c.unit}`, S.simT, byLabel()); closeModal(); toast('Отсчёт записан'); },
+};
+function keepName() { const el = $('#runNameNew'); if (el) S.draftName = el.value; }
+function setPtab(v) { S.ptab = v; $('#s-exp').dataset.ptab = v; $$('[data-act="ptab"]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v)); if (v === 'journal') renderJournal(true); }
+
+document.addEventListener('click', e => {
+  const hd = e.target.closest('.dev-h');
+  if (hd && !e.target.closest('[data-act]')) { const id = hd.dataset.dev; hd.parentElement.classList.toggle('open'); openDevs.has(id) ? openDevs.delete(id) : openDevs.add(id); return; }
+  const b = e.target.closest('[data-act]');
+  if (!b) { if (!e.target.closest('.pop, .ctx')) closeCtx(); if (e.target.id === 'modal') closeModal(); return; }
+  if (b.disabled || b.getAttribute('aria-disabled') === 'true') return;
+  if (b.dataset.act !== 'demo' && !b.closest('.pop')) closeCtx();
+  const f = ACT[b.dataset.act]; if (f) f(b, e);
+});
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"][data-act]')) { e.preventDefault(); e.target.click(); } });
+document.addEventListener('change', e => {
+  if (e.target.id === 'showMissing') { S.showMissing = e.target.checked; keepName(); renderSelect(); }
+  else if (e.target.id === 'tplSel') { S.template = e.target.value; const t = TEMPLATES.find(x => x.id === S.template); S.sel = new Set(t.devs.filter(i => devAvailable(INST[i]) || INST[i].needs)); keepName(); if (S.template === 'patron' && /^опыт_/.test(S.draftName)) S.draftName = 'dry04'; renderSelect(); }
+  else if (e.target.id === 'mkDown') {
+    S.mkDown = e.target.checked;
+    if (S.run) { const names = devOrder.filter(i => S.run.devs.has(i) && INST[i].group === 'mk').map(i => INST[i].name).join(', ');
+      if (S.mkDown) raise('mk', 'crit', `МК-1: нет связи, без данных: ${names}`); else clearAlarm('mk', 'МК-1: связь восстановлена'); }
+    renderDevList();
+  }
+  else if (e.target.closest('#cfgForm')) { const d = INST[$('#cfgForm').dataset.dev]; Object.assign(d.set, readForm($('#cfgForm'))); renderSettings(); }
+  else if (e.target.id === 'runNameEdit' && S.run) { const v = e.target.value.trim(); if (v && v !== S.run.name) { jpush('set', `Опыт переименован: ${S.run.name} → ${v}`, S.simT, byLabel()); S.run.name = v; } }
+});
+/* журнал: время заметки = первое нажатие клавиши */
+document.addEventListener('input', e => {
+  if (e.target.id !== 'jInput') return;
+  const v = e.target.value;
+  if (v && S.noteA == null) S.noteA = S.simT; if (!v) S.noteA = null;
+  const chip = $('#jT'); chip.hidden = S.noteA == null;
+  if (S.noteA != null) chip.textContent = S.run.t0 != null ? fmtClock(S.noteA - S.run.t0) : hhmmss(wallOf(S.noteA));
+});
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'jForm') return; e.preventDefault();
+  const inp = $('#jInput'), text = inp.value.trim();
+  if (text) jpush('user', text, S.noteA != null ? S.noteA : S.simT, isPhone() ? 'телефон' : '');
+  else { S.run.marks++; jpush('user', `метка ${S.run.marks}`, S.simT, isPhone() ? 'телефон' : ''); }
+  inp.value = ''; S.noteA = null; $('#jT').hidden = true;
+});
+/* ROI: клик по кадру тепловизора создаёт канал */
+document.addEventListener('click', e => {
+  const cv = e.target.closest && e.target.closest('canvas[data-cv-panel]'); if (!cv) return;
+  const p = findPanel(cv.dataset.cvPanel); if (!p || p.kind !== 'frame' || !p.geo) return;
+  const rc = cv.getBoundingClientRect(), col = Math.floor((e.clientX - rc.left - p.geo.ox) / p.geo.sc), row = Math.floor((e.clientY - rc.top - p.geo.oy) / p.geo.sc);
+  if (col < 0 || col >= IW || row < 0 || row >= IH || roiAt(cv, p, e)) return;
+  const used = new Set(rois.map(q => q.name)), name = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find(ch => !used.has(ch));
+  if (!name) { toast('Точек не больше 26'); return; }
+  const id = 'th:roi' + name; roiSeq++;
+  const onStripe = row >= SY0 && row < SY1 && col >= BX0 && col < BX1;
+  CH[id] = { id, k: 'roi' + name, dev: 'th', name: `точка ${name}`, kind: 'ts', unit: '°C', dp: 1, color: 3 + roiSeq, gen: t => apparent(col, row, t, epsNow()) };
+  INST.th.chans.push(id); rois.push({ name, col, row });
+  const r = S.run; r.chans.push(id); r.data[id] = { t: [], v: [] }; r.next[id] = null; fill(r, id, r.fromA, S.simT);
+  const where = col >= BX0 && col < BX1 ? `${fmtV(colMM(col), 0)} мм от входа` : 'вне корпуса';
+  jpush('sys', `Тепловизор: точка ${name}, ${where}${onStripe ? '' : ', вне полосы'}`, S.simT, byLabel());
+  openDevs.add('th'); renderDevList(); $$('[data-act="roiClear"]').forEach(x => x.hidden = false); toast(`Точка ${name}`);
+});
+
+/* ================= каталог приборов ================= */
+function openCatalog() {
+  const types = [['pt100', 'Плата Pt100 ×8, Modbus RTU'], ['thermal', 'Тепловизор UVC'], ['cam', 'Камера UVC'], ['scd41', 'SCD41, CO₂ через МК'], ['sht45', 'SHT4x, влажность через МК'], ['sdp810', 'SDP8xx, перепад давления через МК'], ['o2', 'O₂-ячейка через ADS1115'], ['manual', 'Ручной прибор']];
+  $('#modal').innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Добавить прибор">
+    <div class="m-h"><span class="ic">${icon('plus')}</span><h3>Добавить прибор</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button></div>
+    <div class="m-b" style="padding-top:10px"><table class="t"><tbody>${types.map(([t, l]) => `<tr><td>${icon(TYPES[t].icon)}</td><td><b>${esc(l)}</b><br><span class="mono">${esc(TYPES[t].model)}</span></td><td style="text-align:right"><button class="btn sm" data-act="catAdd" data-t="${t}">Добавить</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="m-f"><button class="btn" data-act="mClose">Закрыть</button></div></div>`;
+  $('#modal').hidden = false; M = null;
+}
+function addFromCatalog(type) {
+  const T = TYPES[type]; const same = devOrder.filter(i => INST[i].type === type).length + 1;
+  const id = type + '_' + same + '_' + Date.now().toString(36);
+  const conn = { pt100: 'Modbus RTU · COM26 · 9600 · адр. 1', thermal: 'USB · UVC', cam: 'USB · UVC', scd41: 'I²C · TCA ch3 · 0x62', sht45: 'I²C · TCA ch3 · 0x44', sdp810: 'I²C · TCA ch6 · 0x25', o2: 'I²C · 0x49', manual: 'ручной ввод' }[type];
+  const inst = addInst(type, { id, name: `${T.title} #${same}`, conn, found: type === 'manual', note: 'по умолчанию не ответил: задайте адрес или порт в ⚙' });
+  closeModal();
+  if (inst.group !== 'manual') { inst.status = 'checking'; S.showMissing = true; renderSelect(); setTimeout(() => { inst.status = 'missing'; renderSelect(); toast(`${inst.name} не найден. Параметры подключения — в ⚙`); }, 600); }
+  else { S.sel.add(inst.id); renderSelect(); }
+}
+
+/* ================= подсказки ================= */
+const tipEl = $('#tip'); let tipT = 0, tipFor = null;
+function showTip(el) {
+  const txt = el.dataset.tip; if (!txt || !document.contains(el)) return;
+  tipEl.textContent = txt; tipEl.hidden = false;
+  const r = el.getBoundingClientRect(), t = tipEl.getBoundingClientRect();
+  let y = r.bottom + 8; if (y + t.height > innerHeight - 8) y = r.top - t.height - 8;
+  tipEl.style.left = clamp(r.left + r.width / 2 - t.width / 2, 8, innerWidth - t.width - 8) + 'px'; tipEl.style.top = Math.max(8, y) + 'px';
+}
+function hideTip() { clearTimeout(tipT); tipEl.hidden = true; tipFor = null; }
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest && e.target.closest('[data-tip]');
+  if (el === tipFor) return; hideTip(); if (!el || drag) return;
+  tipFor = el; tipT = setTimeout(() => showTip(el), 350);
+});
+document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el && el.matches(':focus-visible')) { hideTip(); tipFor = el; showTip(el); } });
+document.addEventListener('focusout', hideTip);
+document.addEventListener('pointerdown', hideTip, true);
+addEventListener('scroll', hideTip, true);
+
+/* ================= цикл ================= */
+let lastReal = performance.now(), lastDraw = 0, lastSide = 0;
+function loop(now) {
+  const dt = Math.min(.25, (now - lastReal) / 1000); lastReal = now;
+  tick(dt);
+  if (S.screen === 'exp' && S.run) {
+    updateTop();
+    if (now - lastDraw > 90) { drawAll(); lastDraw = now; }
+    if (now - lastSide > 350) { updateSide(); updateTimeline(); lastSide = now; }
+  } else if (S.screen === 'home' && now - lastSide > 500) { updateHomePlate(); lastSide = now; }
+  requestAnimationFrame(loop);
+}
+
+demoRun();
+go('home');
+requestAnimationFrame(loop);
+})();
+</script>
