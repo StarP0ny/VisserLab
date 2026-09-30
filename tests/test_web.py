@@ -87,6 +87,14 @@ def test_collector_down():
         assert not m["ok"] and m["error"] == "Сборщик не запущен"
 
 
+def test_phone_link_only_for_this_pc():
+    app = create_app(free_port(), token="секрет", port=8080)
+    r = TestClient(app, client=LOCAL).get("/api/phone").json()
+    assert r["lan"] and all(x["url"].endswith(":8080/?t=секрет") and x["qr"].startswith("<svg") for x in r["links"])
+    assert TestClient(app, client=("192.168.1.50", 40000)).get("/api/phone").status_code == 403
+    assert TestClient(create_app(free_port()), client=LOCAL).get("/api/phone").json() == {"lan": False}
+
+
 def test_phone_needs_token():
     app = create_app(free_port(), token="секрет")
     phone = TestClient(app, client=("192.168.1.50", 40000))

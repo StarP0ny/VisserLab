@@ -96,6 +96,7 @@ input::placeholder { color:var(--faint); }
 .brand { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
 .brand h1 { font:600 26px/1.1 var(--f-brand); letter-spacing:-.01em; margin:0; }
 .brand p { margin:0; color:var(--muted); }
+.brand .sp { flex:1; }
 .plate { border:1px solid var(--rec); background:var(--rec-weak); border-radius:14px; padding:22px 24px; display:grid; grid-template-columns:1fr auto; gap:14px 24px; align-items:center; }
 .plate.pause { border-color:var(--pause); background:var(--pause-weak); }
 .plate.prep { border-color:var(--accent); background:var(--accent-weak); }
@@ -282,6 +283,19 @@ body.alt .dev-h { cursor:copy; outline:1px dashed var(--accent); outline-offset:
 .panel { position:relative; display:grid; grid-template-rows:auto auto minmax(0,1fr); background:var(--panel); border:1px solid var(--line); border-radius:12px; min-width:0; min-height:0; overflow:hidden; }
 .panel.w2 { grid-column:span 2; }
 .panel.w3 { grid-column:1 / -1; }
+.panel.h2 { grid-row:span 2; }
+.popped { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); }
+.popped svg.i { width:16px; height:16px; }
+.popped .chip { gap:6px; padding-right:4px; }
+.popped .rx { border:0; background:none; cursor:pointer; color:var(--muted); font-size:14px; padding:0 2px; }
+.popped .rx:hover { color:var(--fg); }
+/* вынесенное окно: одна панель на всё окно */
+#app:has(> .pop:not([hidden])) { padding:0; }
+body:has(.pop:not([hidden])) { overflow:hidden; }
+.pop .panel { position:fixed; inset:0; border:0; border-radius:0; }
+.pop .p-tools { gap:8px; align-items:center; }
+.pop .p-tools .seg button { padding:3px 9px; font-size:12px; }
+.pop-empty { height:100%; display:grid; place-content:center; justify-items:center; gap:12px; color:var(--muted); }
 .p-h { display:flex; align-items:center; gap:8px; padding:7px 6px 2px 12px; min-width:0; }
 .p-h .t { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
 .p-h .t small { color:var(--muted); font-weight:400; }
@@ -321,6 +335,13 @@ body.alt .dev-h { cursor:copy; outline:1px dashed var(--accent); outline-offset:
 /* ---------- окна, меню, призрак ---------- */
 .scrim { position:fixed; inset:0; z-index:50; background:var(--scrim); display:grid; place-items:center; padding-inline:16px; }
 .modal.narrow { width:min(480px,100%); }
+.m-b.phone { display:grid; gap:12px; justify-items:center; padding-block:10px 18px; }
+.qr { background:#fff; padding:10px; border-radius:12px; line-height:0; }
+.qr svg { width:min(240px,60vw); height:auto; display:block; }
+.qr-url { display:flex; gap:8px; align-items:center; max-width:100%; }
+.qr-url code { font:12px var(--f-num); overflow-wrap:anywhere; color:var(--muted); }
+.qr-alt { display:flex; gap:10px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); }
+.lnk { background:none; border:0; padding:0; color:var(--accent); cursor:pointer; font:inherit; text-decoration:underline dotted; text-underline-offset:3px; }
 .modal { width:min(720px,100%); max-height:calc(100% - 32px); display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
 .m-h { display:grid; grid-template-columns:auto 1fr auto; gap:4px 14px; align-items:center; padding:16px 18px 10px; }
 .m-h .ic { width:40px; height:40px; border-radius:10px; display:grid; place-items:center; background:var(--surface); border:1px solid var(--line-2); grid-row:span 2; }

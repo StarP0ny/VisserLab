@@ -7,14 +7,15 @@
 каждые 2 с. Сам сборщик веб не запускает.
 
 С этого ПК страница открывается просто. С других устройств (телефон) — только
-по ссылке с токеном, которую печатает `visserlab web --host 0.0.0.0`.
+по ссылке с токеном: её печатает `visserlab web` и показывает кнопка «Телефон» (QR).
 """
 import asyncio
 import json
+import socket
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 STATIC = Path(__file__).with_name("static")
@@ -28,12 +29,46 @@ class FreshStatic(StaticFiles):
         resp = super().file_response(*a, **kw)
         resp.headers["Cache-Control"] = "no-cache"
         return resp
+
+
 RETRY_S = 2.0
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 NO_TOKEN = 4401          # код закрытия WebSocket: нужна ссылка с токеном
 
 
-def create_app(collector_port: int, token: str | None = None, collector_host="127.0.0.1") -> FastAPI:
+def lan_ips():
+    """Адреса ПК в локальной сети, вероятный первым: 192.168.*, потом 10.*, потом 172.16–31.*
+    (там обычно Docker, WSL и VPN-туннели). Маршрут по умолчанию не годится: его забирает VPN."""
+    try:
+        ips = socket.gethostbyname_ex(socket.gethostname())[2]
+    except OSError:
+        ips = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))          # пакет не уходит: только выбор маршрута
+            ips.append(s.getsockname()[0])
+    except OSError:
+        pass
+
+    def rank(ip):
+        a, b = (int(x) for x in ip.split(".")[:2])
+        return 0 if (a, b) == (192, 168) else 1 if a == 10 else 2 if a == 172 and 16 <= b <= 31 else 3
+
+    ips = [ip for i, ip in enumerate(ips) if ip not in ips[:i] and not ip.startswith(("127.", "169.254."))]
+    return sorted(ips, key=rank)
+
+
+def phone_urls(port, token):
+    return [f"http://{ip}:{port}/?t={token}" for ip in lan_ips()]
+
+
+def qr_svg(text):
+    import segno
+    return segno.make(text, error="m").svg_inline(border=2, dark="#000", light="#fff", omitsize=True)
+
+
+def create_app(collector_port: int, token: str | None = None, collector_host="127.0.0.1", port=8080) -> FastAPI:
+    """token — ссылка для телефона (None: веб только для этого ПК); port — свой порт, для ссылки."""
     app = FastAPI(title="VisserLab", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", FreshStatic(directory=STATIC), name="static")
 
@@ -43,6 +78,15 @@ def create_app(collector_port: int, token: str | None = None, collector_host="12
         for name in ("app.js", "app.css"):     # версия в адресе: файл из кэша, взятый до обновления, не подхватится
             html = html.replace(f"/static/{name}", f"/static/{name}?v={(STATIC / name).stat().st_mtime_ns}")
         return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/phone")
+    async def phone(request: Request):
+        """Ссылка и QR для телефона. Только этому ПК: телефону токен показывать незачем."""
+        if (request.client.host if request.client else "") not in LOOPBACK:
+            return JSONResponse({"error": "только с этого ПК"}, status_code=403)
+        if token is None:
+            return {"lan": False}
+        return {"lan": True, "links": [{"url": u, "qr": qr_svg(u)} for u in phone_urls(port, token)]}
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket):

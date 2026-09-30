@@ -1,7 +1,7 @@
 """VisserLab: регистратор опытов.
 
   python -m visserlab collect                    сборщик: держит приборы, пишет опыты, ждёт клиентов
-  python -m visserlab web [--host 0.0.0.0]       веб-интерфейс (к уже запущенному сборщику)
+  python -m visserlab web                        веб-интерфейс (к уже запущенному сборщику), с телефона — по QR
   python -m visserlab ctl <команда> [аргументы]  управление запущенным сборщиком (ctl без команды — справка)
   python -m visserlab record [--template ID]     запись из консоли, без сборщика и веба
   python -m visserlab devices                    приборы из конфига и проверка, отвечают ли
@@ -25,7 +25,8 @@ def main():
     c.add_argument("--runs-dir", default=None, help="куда писать опыты (по умолчанию из конфига)")
 
     w = sub.add_parser("web", help="веб-интерфейс")
-    w.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — открыть для телефона (по ссылке с токеном)")
+    w.add_argument("--host", default="0.0.0.0", help="127.0.0.1 — только для этого ПК; по умолчанию и для телефона, по ссылке с токеном")
+    w.add_argument("--new-token", action="store_true", help="выдать новый токен: старые ссылки на телефонах перестанут работать")
     w.add_argument("--port", type=int, default=8080)
     w.add_argument("--collector-port", type=int, default=None, help="порт сборщика (по умолчанию из конфига)")
 
@@ -70,7 +71,7 @@ def main():
     if a.cmd == "web":
         if a.collector_port:
             cfg.port = a.collector_port
-        return web(cfg, a.host, a.port)
+        return web(cfg, a.host, a.port, a.new_token)
 
     if a.cmd == "ctl":
         from . import ctl
@@ -123,22 +124,20 @@ def main():
         return 0
 
 
-def web(cfg, host, port):
-    import secrets
-    import socket
-
+def web(cfg, host, port, new_token=False):
     import uvicorn
 
-    from .web.server import LOOPBACK, create_app
-    token = None if host in LOOPBACK else secrets.token_urlsafe(9)
+    from .config import web_token
+    from .web.server import LOOPBACK, create_app, phone_urls
+    token = None if host in LOOPBACK else web_token(cfg, new=new_token)
     print(f"Веб: http://127.0.0.1:{port}/  (сборщик ждём на 127.0.0.1:{cfg.port})")
     if token:
-        ips = {ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")}
-        for ip in sorted(ips):
-            print(f"  с телефона: http://{ip}:{port}/?t={token}")
+        for url in phone_urls(port, token)[:1]:
+            print(f"  с телефона: {url}   (или кнопка «Телефон» — QR)")
+        print("  Windows при первом запуске спросит про брандмауэр: разрешите для частной сети.")
     print("Ctrl-C — остановить веб. Сборщик и опыт это не трогает.", flush=True)
     try:
-        uvicorn.run(create_app(cfg.port, token), host=host, port=port, log_level="warning")
+        uvicorn.run(create_app(cfg.port, token, port=port), host=host, port=port, log_level="warning")
     except KeyboardInterrupt:
         pass
     return 0

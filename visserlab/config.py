@@ -102,6 +102,18 @@ def save_local(cfg: Config, dev_id, changes):
     os.replace(tmp, cfg.local_path)
 
 
+def web_token(cfg: Config, new=False):
+    """Токен ссылки для телефона. Хранится рядом с конфигом (web_token, не в git), чтобы
+    ссылка на телефоне переживала перезапуск веба; new=True — выдать новый."""
+    import secrets
+    path = (cfg.local_path.parent if cfg.local_path else CONFIG_DIR) / "web_token"
+    tok = "" if new or not path.is_file() else path.read_text(encoding="utf-8").strip()
+    if not tok:
+        tok = secrets.token_urlsafe(9)
+        path.write_text(tok + "\n", encoding="utf-8")
+    return tok
+
+
 def _load_plugin(path: Path):
     """Драйверы из файла рядом с конфигом (например, симуляторы в tests/stand)."""
     path = path.resolve()

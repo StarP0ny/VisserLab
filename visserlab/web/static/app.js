@@ -10,6 +10,10 @@ const num = s => parseFloat(String(s).replace(',', '.'));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const isPhone = () => matchMedia('(max-width: 760px)').matches;
 const BY = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'телефон' : 'ПК';
+const THIS_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);     // ссылку для телефона показывает только ПК
+const QS = new URLSearchParams(location.search);
+const POP = QS.get('pop'), POP_KEY = QS.get('k');     // вынесенное окно: одна панель опыта POP_KEY
+const BC = 'BroadcastChannel' in window ? new BroadcastChannel('visserlab') : null;
 function fmtClock(sec) {
   if (sec == null || !isFinite(sec)) return '—:—';
   const s = Math.round(sec), a = Math.abs(s), h = Math.floor(a / 3600), m = Math.floor(a % 3600 / 60), ss = a % 60;
@@ -57,6 +61,10 @@ const IC = {
   x: '<path d="M5 5l10 10M15 5L5 15"/>',
   search: '<circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/>',
   refresh: '<path d="M16 10a6 6 0 1 1-1.8-4.3"/><path d="M16.5 3v4h-4"/>',
+  phone: '<rect x="6" y="2.5" width="8" height="15" rx="1.8"/><path d="M9 15h2"/>',
+  popout: '<path d="M11.5 3H17v5.5M17 3l-7 7"/><path d="M15 11.5V17H3V5h5.5"/>',
+  popin: '<path d="M3 5.5V3h14v14h-2.5"/><rect x="3" y="9" width="8" height="8" rx="1"/>',
+  tall: '<path d="M10 3v14M7 6l3-3 3 3M7 14l3 3 3-3"/>',
   stop: '<rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/>',
 };
 const icon = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 20 20" aria-hidden="true">${IC[k] || IC.device}</svg>`;
@@ -129,7 +137,7 @@ function setUp(up, why = '', port) {
   if (!up) d.innerHTML = why === 'collector' ? `Сборщик не запущен. Запустите: <code>python -m visserlab collect</code>`
     : why === 'token' ? 'Нужна ссылка с токеном. Её печатает <code>python -m visserlab web --host 0.0.0.0</code>'
     : 'Нет связи с веб-сервером';
-  if (S.screen === 'home') renderHome();
+  if (S.screen === 'home') renderHome(); else if (S.screen === 'pop' && !S.run) renderPop();
 }
 function onMessage(m) {
   switch (m.type) {
@@ -163,7 +171,7 @@ function applyHello(s) {
   if (s.state === 'idle') {
     S.state = 'idle';
     if (S.done) { rerender(); return; }
-    if (S.run && S.screen === 'exp') { finishRun(s.last_run); return; }
+    if (S.run && (S.screen === 'exp' || S.screen === 'pop')) { finishRun(s.last_run); return; }
     S.run = null;
     if (S.screen === 'exp') go('home'); else rerender();
     return;
@@ -175,8 +183,11 @@ function applyHello(s) {
   setDevices(s.devices);
   S.alarms = s.alarms; S.events = s.events.slice(); S.last = { ...s.last };
   S.series = {}; S.frames = {}; S.profHist = {};
-  loadHistory();
   loadLayout();
+  if (POP && S.layoutKey !== POP_KEY) { window.close(); return; }      // опыт сменился — окно не нужно
+  loadHistory(POP ? S.panels.flatMap(p => p.series) : null);
+  if (POP && S.panels.length && BC) BC.postMessage({ t: 'here', k: POP_KEY, id: POP });
+  if (!POP) checkPops();
   rerender();
 }
 function setDevices(list) {
@@ -190,9 +201,9 @@ function addDevice(d) {
   S.devStatus[d.id] = { ...(S.devStatus[d.id] || {}), status: d.status, reason: d.reason };
   for (const c of d.channels) CH[`${d.id}:${c.key}`] = { ...c, id: `${d.id}:${c.key}`, dev: d.id };
 }
-function loadHistory() {
+function loadHistory(only) {
   for (const c of Object.values(CH)) {
-    if (c.kind !== 'scalar' && c.kind !== 'points') continue;
+    if ((c.kind !== 'scalar' && c.kind !== 'points') || (only && !only.includes(c.id))) continue;
     request('history', { channel: c.id, points: 4000 }).then(r => {
       const cur = S.series[c.id] || { t: [], v: [] };
       const lastT = r.t.length ? r.t[r.t.length - 1] : -Infinity;
@@ -206,7 +217,7 @@ function onState(m) {
   S.lastRun = m.last_run;
   if (m.state === 'idle') {
     S.state = 'idle';
-    if (S.run && S.screen === 'exp' && prev !== 'prep') finishRun(m.last_run);
+    if (S.run && (S.screen === 'exp' || S.screen === 'pop') && prev !== 'prep') finishRun(m.last_run);
     else { S.run = null; if (S.screen === 'exp') go('home'); else rerender(); }
     return;
   }
@@ -215,6 +226,7 @@ function onState(m) {
   if (m.t0 != null && S.run.preroll == null) S.run.preroll = m.t0 - Math.max(S.run.prepared, m.t0 - S.config.preroll_s);
   if (S.screen === 'exp') { renderCtrl(); updateTimeline(); renderJournal(); }
   else if (S.screen === 'home') renderHome();
+  else if (S.screen === 'pop') renderPopState();
 }
 function finishRun(lr) {
   const r = S.run;
@@ -301,14 +313,61 @@ function loadLayout() {
     S.panels = saved.map(p => ({ ...p, series: p.series.filter(id => CH[id]) })).filter(p => p.series.length);
     pSeq = Math.max(0, ...S.panels.map(p => +String(p.id).slice(1) || 0));
   } else S.panels = defaultLayout();
+  if (POP) S.panels = S.panels.filter(p => p.id === POP);
 }
-function saveLayout() { if (S.layoutKey) store(S.layoutKey, JSON.stringify(S.panels)); }
+function saveLayout() { if (S.layoutKey && !POP) store(S.layoutKey, JSON.stringify(S.panels, (k, v) => k === 'alive' ? undefined : v)); }
+
+/* ---------- вынесенные окна ---------- */
+const POPWIN = {};                          // id панели → окно, если открывали из этой вкладки
+function popOut(p) {
+  const [w, h] = p.kind === 'frame' ? [720, 520] : [780, 460];
+  const win = window.open(`/?pop=${encodeURIComponent(p.id)}&k=${encodeURIComponent(S.layoutKey)}`, `vl-${S.layoutKey}-${p.id}`, `popup,width=${w},height=${h}`);
+  if (!win) { toast('Браузер не дал открыть окно'); return; }
+  POPWIN[p.id] = win; p.pop = true; saveLayout(); renderDock();
+}
+function returnPanel(id) {
+  const p = findPanel(id); if (!p || !p.pop) return;
+  p.pop = false; saveLayout(); if (S.screen === 'exp') renderDock();
+}
+function popBack(id) {
+  const w = POPWIN[id];
+  if (w && !w.closed) w.close(); else if (BC) BC.postMessage({ t: 'close', k: S.layoutKey, id });
+  returnPanel(id);
+}
+function popFocus(id) {
+  const w = POPWIN[id];
+  if (w && !w.closed) w.focus(); else if (BC) BC.postMessage({ t: 'focus', k: S.layoutKey, id });
+}
+function checkPops() {                      // после перезагрузки: кто из вынесенных окон жив
+  const pend = S.panels.filter(p => p.pop); if (!pend.length) return;
+  if (!BC) { pend.forEach(p => p.pop = false); return; }
+  pend.forEach(p => p.alive = false);
+  const key = S.layoutKey;
+  BC.postMessage({ t: 'ping', k: key });
+  setTimeout(() => { if (S.layoutKey === key) for (const p of S.panels) if (p.pop && !p.alive) returnPanel(p.id); }, 1500);
+}
+if (BC) BC.onmessage = e => {
+  const m = e.data || {};
+  if (POP) {
+    if (m.k !== POP_KEY || (m.id && m.id !== POP)) return;
+    if (m.t === 'ping') BC.postMessage({ t: 'here', k: POP_KEY, id: POP });
+    else if (m.t === 'close') window.close();
+    else if (m.t === 'focus') window.focus();
+    return;
+  }
+  if (!S.layoutKey || m.k !== S.layoutKey) return;
+  const p = findPanel(m.id); if (!p) return;
+  if (m.t === 'here') { p.alive = true; if (!p.pop) { p.pop = true; saveLayout(); if (S.screen === 'exp') renderDock(); } }
+  else if (m.t === 'bye') returnPanel(m.id);
+};
+if (POP) addEventListener('pagehide', () => { if (BC && S.panels.length) BC.postMessage({ t: 'bye', k: POP_KEY, id: POP }); });
 
 /* ================= навигация ================= */
 function go(screen) {
+  if (POP) screen = 'pop';
   if (S.screen === 'exp' && screen !== 'exp' && S.done) leaveDone();
   S.screen = screen;
-  for (const s of ['home', 'select', 'settings', 'exp', 'analysis']) {
+  for (const s of ['home', 'select', 'settings', 'exp', 'analysis', 'pop']) {
     const el = $('#s-' + s); el.hidden = s !== screen;
     if (s !== screen) el.innerHTML = '';        // иначе id полей формы двоятся с окном прибора
   }
@@ -316,7 +375,7 @@ function go(screen) {
   rerender();
 }
 function rerender() {
-  ({ home: renderHome, select: renderSelect, settings: renderSettings, exp: renderExp, analysis: renderAnalysis })[S.screen]();
+  ({ home: renderHome, select: renderSelect, settings: renderSettings, exp: renderExp, analysis: renderAnalysis, pop: renderPop })[S.screen]();
 }
 
 /* ================= индикатор состояния ================= */
@@ -332,7 +391,7 @@ function renderHome() {
   const busy = S.state !== 'idle' && S.run;
   const tpls = Object.entries(S.templates);
   $('#s-home').innerHTML = `<div class="home">
-    <header class="brand"><h1>Visser Lab</h1><p>регистратор опытов</p></header>
+    <header class="brand"><h1>Visser Lab</h1><p>регистратор опытов</p>${THIS_PC ? `<span class="sp"></span><button class="btn" data-act="phone">${icon('phone')}Телефон</button>` : ''}</header>
     <div id="plate">${busy ? plateHTML() : ''}</div>
     <div class="acts2">
       <button class="big" data-act="new" ${busy || !S.up ? 'disabled' : ''}><b>Новый опыт</b><span>${busy ? 'Сначала завершите текущий' : 'Выбрать приборы и начать'}</span></button>
@@ -598,6 +657,7 @@ function renderExp() {
       <span class="state" id="statePill"></span>
       <div class="clock num" id="clock" data-tip="От старта записи"></div>
       <span id="statBox"></span>
+      ${THIS_PC ? `<button class="icon-btn" data-act="phone" data-tip="Телефон: QR" aria-label="Телефон">${icon('phone')}</button>` : ''}
       <div class="ctrl" id="ctrl"></div>
     </header>
     <div class="timeline">
@@ -721,27 +781,36 @@ function panelTitle(p) {
   return devs.map(dn).join(' + ');
 }
 function panelHTML(p) {
-  const wc = p.w === 2 ? ' w2' : p.w === 3 ? ' w3' : '';
+  const wc = (p.w === 2 ? ' w2' : p.w === 3 ? ' w3' : '') + (p.h === 2 ? ' h2' : '');
   const dev = S.devices[CH[p.series[0]].dev];
   const roi = p.kind === 'frame' && dev && (dev.actions || []).includes('roi_add');
   const hasRoi = p.kind === 'frame' && devViz(dev.id).some(c => CH[c].at && CH[c].at.length === 3);
-  return `<section class="panel${wc}" data-panel="${p.id}">
-    <header class="p-h"><span class="t">${panelTitle(p)}${roi ? '<span class="ii" tabindex="0" data-tip="Клик по кадру — точка замера.\nПравый клик по точке — удалить." aria-label="Точки замера">i</span>' : ''}</span><div class="p-tools">
-      ${roi ? `<button class="icon-btn" data-act="roiClear" data-dev="${esc(dev.id)}" data-tip="Удалить все точки" aria-label="Удалить все точки"${hasRoi ? '' : ' hidden'}>${icon('erase')}</button>` : ''}
+  const clear = roi ? `<button class="icon-btn" data-act="roiClear" data-dev="${esc(dev.id)}" data-tip="Удалить все точки" aria-label="Удалить все точки"${hasRoi ? '' : ' hidden'}>${icon('erase')}</button>` : '';
+  const tools = POP
+    ? `${p.kind === 'ts' ? `<div class="seg" role="group" aria-label="Окно времени">${[[60, '1 мин'], [300, '5 мин'], [1800, '30 мин'], ['all', 'Всё']].map(([v, l]) => `<button data-act="win" data-v="${v}" aria-pressed="${String(S.win) === String(v)}">${l}</button>`).join('')}</div>` : ''}
+      <span class="state" id="popState"></span>${clear}
+      <button class="icon-btn" data-act="popClose" data-tip="Вернуть в раскладку" aria-label="Вернуть в раскладку">${icon('popin')}</button>`
+    : `${clear}${isPhone() ? '' : `<button class="icon-btn" data-act="popOut" data-p="${p.id}" data-tip="В отдельное окно" aria-label="В отдельное окно">${icon('popout')}</button>`}
+      <button class="icon-btn" data-act="tall" data-p="${p.id}" data-tip="Высота: 1 → 2" aria-label="Высота панели">${icon('tall')}</button>
       <button class="icon-btn" data-act="wide" data-p="${p.id}" data-tip="Ширина: 1 → 2 → вся строка" aria-label="Ширина панели">${icon('wide')}</button>
-      <button class="icon-btn" data-act="closePanel" data-p="${p.id}" data-tip="Убрать панель" aria-label="Убрать панель">${icon('x')}</button></div></header>
+      <button class="icon-btn" data-act="closePanel" data-p="${p.id}" data-tip="Убрать панель" aria-label="Убрать панель">${icon('x')}</button>`;
+  return `<section class="panel${wc}" data-panel="${p.id}">
+    <header class="p-h"><span class="t">${panelTitle(p)}${roi ? '<span class="ii" tabindex="0" data-tip="Клик по кадру — точка замера.\nПравый клик по точке — удалить." aria-label="Точки замера">i</span>' : ''}</span><div class="p-tools">${tools}</div></header>
     <div class="p-lg" data-lg="${p.id}"></div>
     <div class="p-b"><canvas data-cv-panel="${p.id}"${roi ? ' class="clickable"' : ''}></canvas></div>
     <div class="drop"></div>
   </section>`;
 }
+function plainTitle(p) { const d = document.createElement('div'); d.innerHTML = panelTitle(p); return d.textContent; }
 function renderDock() {
   const dock = $('#dock'); if (!dock) return;
-  dock.classList.toggle('empty', !S.panels.length);
+  const shown = S.panels.filter(p => !p.pop), popped = S.panels.filter(p => p.pop);
+  dock.classList.toggle('empty', !shown.length);
   dock.innerHTML = (S.done ? `<div class="done-bar"><b>Опыт завершён · ${fmtDur(S.done.duration)}</b><code>${esc(S.done.dir || '')}</code><span class="sp"></span><button class="btn sm primary" data-act="home">На главную</button></div>` : '')
-    + `<div class="dgrid">` + S.panels.map(panelHTML).join('')
+    + (popped.length ? `<div class="popped">${icon('popout')}<span>В окнах:</span>${popped.map(p => `<span class="chip"><button class="lnk" data-act="popFocus" data-p="${p.id}" data-tip="Показать окно">${esc(plainTitle(p))}</button><button class="rx" data-act="popBack" data-p="${p.id}" data-tip="Вернуть в раскладку" aria-label="Вернуть в раскладку">↩</button></span>`).join('')}</div>` : '')
+    + `<div class="dgrid">` + shown.map(panelHTML).join('')
     + `<div class="dropzone" data-zone="1"><div><b>${isPhone() ? 'Нажмите на график в «Приборах»' : 'Перетащите график сюда'}</b><p>${isPhone() ? 'Долгое нажатие на прибор — все графики' : 'Alt — все графики прибора'}</p></div><div class="drop"></div></div></div>`;
-  S.panels.forEach(renderLegend);
+  shown.forEach(renderLegend);
   frameCache.clear();
 }
 function renderLegend(p) {
@@ -752,7 +821,7 @@ function renderLegend(p) {
   el.innerHTML = p.series.map(id => {
     const c = CH[id], right = units.length > 1 && units.indexOf(c.unit) === 1;
     const pref = p.series.length > 1 && c.dev !== CH[p.series[0]].dev ? esc(S.devices[c.dev].name) + ' · ' : '';
-    return `<span class="lg" style="--c:${colorVar(col[id])}"><i class="${c.kind === 'points' ? 'pt' : ''}"></i>${pref}${esc(c.name)}${right ? ' <span class="ax">справа</span>' : ''} <b data-lv="${p.id}|${esc(id)}">—</b>${p.kind === 'profile' ? '' : ' ' + esc(c.unit)}${p.series.length > 1 ? `<button class="rx" data-act="rmSeries" data-p="${p.id}" data-c="${esc(id)}" aria-label="Убрать ${esc(c.name)}">×</button>` : ''}</span>`;
+    return `<span class="lg" style="--c:${colorVar(col[id])}"><i class="${c.kind === 'points' ? 'pt' : ''}"></i>${pref}${esc(c.name)}${right ? ' <span class="ax">справа</span>' : ''} <b data-lv="${p.id}|${esc(id)}">—</b>${p.kind === 'profile' ? '' : ' ' + esc(c.unit)}${p.series.length > 1 && !POP ? `<button class="rx" data-act="rmSeries" data-p="${p.id}" data-c="${esc(id)}" aria-label="Убрать ${esc(c.name)}">×</button>` : ''}</span>`;
   }).join('') + (p.kind === 'profile' ? `<span class="lg"><i style="background:var(--faint)"></i>−5 мин</span>` : '');
 }
 
@@ -778,6 +847,25 @@ function planDrop(target, ids) {
   return { ok: true, label: ok.length < ids.length ? `Наложить ${ok.length} из ${ids.length}` : 'Наложить', apply: () => { p.series.push(...ok); if (bad.length) toast(`Наложено ${ok.length} из ${ids.length}. ${bad.find(b => b !== 'уже на панели') || ''}`); } };
 }
 function addPanels(ids) { planDrop({ type: 'new' }, ids).apply(); saveLayout(); renderDock(); }
+
+/* ---------- вынесенное окно: одна панель на всё окно ---------- */
+function renderPop() {
+  const el = $('#s-pop'), p = S.panels[0];
+  if (!S.run || !p) {
+    el.innerHTML = `<div class="pop-empty"><p>${!S.up ? 'Подключение…' : S.run ? 'Панели нет в раскладке опыта' : 'Опыт не идёт'}</p><button class="btn" data-act="popClose">Закрыть окно</button></div>`;
+    document.title = 'VisserLab';
+    return;
+  }
+  el.innerHTML = panelHTML(p);
+  renderLegend(p); renderPopState(); frameCache.clear();
+  document.title = `${plainTitle(p)} · ${S.run.name}`;
+}
+function renderPopState() {
+  const el = $('#popState'); if (!el) return;
+  const st = S.done ? 'done' : S.state;
+  el.className = 'state ' + st;
+  el.innerHTML = `<span class="dot"></span>${{ prep: 'Подготовка', rec: 'Запись', pause: 'Пауза', done: 'Завершён', idle: 'Нет опыта' }[st]}`;
+}
 
 /* ================= рисование ================= */
 let TOK = null;
@@ -1109,7 +1197,33 @@ function renderModal() {
   </div>`;
   if (M.tab === 'input') setTimeout(() => { const el = $('#mVal'); if (el) el.focus(); }, 0);
 }
-function closeModal() { $('#modal').hidden = true; M = null; SW = null; }
+function closeModal() { $('#modal').hidden = true; M = null; SW = null; PH = null; }
+
+/* ---------- телефон: QR ссылки с токеном ---------- */
+let PH = null;
+async function openPhone() {
+  closeModal(); PH = { data: null, i: 0 };
+  renderPhone(); $('#modal').hidden = false;
+  let data;
+  try { data = await (await fetch('/api/phone')).json(); } catch { data = { error: true }; }
+  if (PH) { PH.data = data; renderPhone(); }
+}
+function renderPhone() {
+  const d = PH.data;
+  let body;
+  if (!d) body = '<p class="empty-note">…</p>';
+  else if (d.error || !d.lan) body = '<p>Веб открыт только для этого ПК. Запустите без <code>--host 127.0.0.1</code>: <code>python -m visserlab web</code></p>';
+  else if (!d.links.length) body = '<p>ПК не видно в локальной сети.</p>';
+  else {
+    const L = d.links[PH.i];
+    body = `<div class="qr">${L.qr}</div><div class="qr-url"><code>${esc(L.url)}</code><button class="btn sm" data-act="phoneCopy">Копировать</button></div>`
+      + (d.links.length > 1 ? `<div class="qr-alt"><span data-tip="Если телефон не открывает — другой адрес этого ПК">Другой адрес:</span>${d.links.map((x, i) => i === PH.i ? '' : `<button class="lnk" data-act="phoneIp" data-i="${i}">${esc(new URL(x.url).hostname)}</button>`).join('')}</div>` : '');
+  }
+  $('#modal').innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Телефон">
+    <div class="m-h"><span class="ic">${icon('phone')}</span><h3>Телефон</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>Камерой телефона, в той же сети</span></div></div>
+    <div class="m-b phone">${body}</div></div>`;
+}
 async function applyModal() {
   const d = devOf(M);
   M.draft = { ...M.draft, ...readForm($('#mForm')) };
@@ -1140,7 +1254,7 @@ function roiAt(cv, p, e) {
   return devViz(dev).map(c => CH[c]).find(c => c.at && c.at.length === 3 && c.at[0] === fkey && Math.hypot(p.geo.ox + (c.at[1] + .5) * p.geo.sc - x, p.geo.oy + (c.at[2] + .5) * p.geo.sc - y) < 10);
 }
 document.addEventListener('contextmenu', e => {
-  if (S.screen !== 'exp') return;
+  if (S.screen !== 'exp' && S.screen !== 'pop') return;
   const h = e.target.closest('[data-drag="dev"]'), g = e.target.closest('[data-gw]'), cv = e.target.closest('canvas[data-cv-panel]');
   if (h) { e.preventDefault(); openCtx(e.clientX, e.clientY, h.dataset.dev); }
   else if (g && g.dataset.gw) { e.preventDefault(); openCtx(e.clientX, e.clientY, g.dataset.gw); }
@@ -1179,6 +1293,9 @@ const ACT = {
   new: () => { S.sel = new Set(); S.drafts = {}; S.template = ''; S.draftName = `опыт_${hhmmss(nowS()).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runRefresh(); else loadPorts(); },
   analysis: () => { closeModal(); go('analysis'); loadRuns(); },
   refresh: runRefresh,
+  phone: () => openPhone(),
+  phoneIp: b => { PH.i = +b.dataset.i; renderPhone(); },
+  phoneCopy: () => { const u = PH.data.links[PH.i].url; navigator.clipboard.writeText(u).then(() => toast('Ссылка скопирована'), () => toast(u)); },
   scanAll: () => { keepName(); startScan(null); },
   scanOne: (b, e) => { e.stopPropagation(); keepName(); openScanWin(b.dataset.dev); },
   scanGo: () => { const id = SW.id, port = $('#scanPort').value; closeModal(); startScan([id], port); },
@@ -1204,6 +1321,11 @@ const ACT = {
   cfgReset: b => { delete S.drafts[b.dataset.dev]; renderSettings(); },
   start: () => run('start', { by: BY }), pause: () => run('pause', { by: BY }), resume: () => run('resume', { by: BY }), stop: () => run('stop', { by: BY }),
   win: b => { S.win = b.dataset.v === 'all' ? 'all' : +b.dataset.v; $$('[data-act="win"]').forEach(x => x.setAttribute('aria-pressed', x === b)); updateTimeline(); },
+  popOut: b => popOut(findPanel(b.dataset.p)),
+  popBack: b => popBack(b.dataset.p),
+  popFocus: b => popFocus(b.dataset.p),
+  popClose: () => window.close(),
+  tall: b => { const p = findPanel(b.dataset.p); p.h = p.h === 2 ? 1 : 2; saveLayout(); renderDock(); },
   wide: b => { const p = findPanel(b.dataset.p), g = $('.dgrid'); const cols = g ? getComputedStyle(g).gridTemplateColumns.split(' ').length : 1; const order = cols >= 3 ? [1, 2, 3] : [1, 3]; p.w = order[(order.indexOf(p.w) + 1) % order.length]; saveLayout(); renderDock(); },
   closePanel: b => { S.panels = S.panels.filter(p => p.id !== b.dataset.p); saveLayout(); renderDock(); },
   rmSeries: b => { const p = findPanel(b.dataset.p); p.series = p.series.filter(id => id !== b.dataset.c); saveLayout(); renderDock(); },
@@ -1300,7 +1422,7 @@ addEventListener('scroll', hideTip, true);
 /* ================= цикл ================= */
 let lastDraw = 0, lastSide = 0;
 function loop(now) {
-  if (S.screen === 'exp' && S.run) {
+  if ((S.screen === 'exp' || S.screen === 'pop') && S.run) {
     updateTop();
     if (now - lastDraw > 90) { drawAll(); lastDraw = now; }
     if (now - lastSide > 350) { updateSide(); updateTimeline(); lastSide = now; }
