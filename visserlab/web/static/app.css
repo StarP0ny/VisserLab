@@ -343,6 +343,11 @@ body:has(.pop:not([hidden])) { overflow:hidden; }
 .drv-sel { display:flex; gap:10px; align-items:center; padding-block:6px 4px; }
 .drv-sel .lnk { margin-left:auto; }
 .f-sub { padding-top:14px; }
+.sw.sm span { width:28px; height:16px; }
+.sw.sm span::after { width:10px; height:10px; }
+.sw.sm input:checked + span::after { transform:translateX(12px); }
+.ch-row .f-l { display:flex; align-items:center; gap:10px; }
+.ch-row.off .mono, .ch-row.off input, table.t tr.off td { opacity:.5; }
 .f-l.mono { font-family:var(--f-num); font-weight:400; }
 .btn.danger { color:var(--err); }
 .warn-q { font-size:13px; align-self:center; }

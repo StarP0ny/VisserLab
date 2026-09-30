@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -94,6 +94,20 @@ def edit_device(cfg_dir, dev_id, name=None, labels=None):
                 e.insert(list(e).index("driver") + 1, "name", name)
         if labels is not None:
             _set_labels(e, labels)
+    _edit(cfg_dir, fn)
+
+
+def set_off(cfg_dir, dev_id, off):
+    """Выключенные каналы прибора: disabled: [T2, T3]; пустой список — ключ убирается.
+    Не «off»: в YAML 1.1 это логическое False."""
+    def fn(devs):
+        e = _box(devs, dev_id)[dev_id]
+        if not off:
+            e.pop("disabled", None)
+            return
+        lst = CommentedSeq(off)
+        lst.fa.set_flow_style()
+        e["disabled"] = lst
     _edit(cfg_dir, fn)
 
 

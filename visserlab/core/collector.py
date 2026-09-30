@@ -75,6 +75,8 @@ class Device:
         self.id, self.inv, self.parent = dev_id, inv, inv.get("parent")
         self.drv = cls(dev_id, inv.get("name"), inv.get("settings"), ctx)
         self.names = {str(k): v for k, v in (inv.get("channels") or {}).items()}
+        self.off = {str(k) for k in inv.get("disabled") or []}      # выключенные вручную (датчик не подключён)
+        self.switch = []                                        # что можно выключить: [{key, name, on}]
         self.status, self.reason, self.since = "wait", "", time.time()
         self.last_t, self.samples = None, 0
         self.thread, self.stop = None, threading.Event()
@@ -91,12 +93,17 @@ class Device:
         return self.drv.group in ("direct", "gateway")
 
     def refresh_channels(self):
-        new = {}
+        new, switch = {}, []
         for ch in self.drv.channels():
             if ch.kind not in KINDS:
                 raise CollectorError(f"{self.name}: канал {ch.key} неизвестного типа {ch.kind}")
             ch.name = self.names.get(ch.key, ch.name)
+            if not ch.of and len(ch.at) != 3:                  # точки с экрана удаляются, а не выключаются
+                switch.append({"key": ch.key, "name": ch.name, "on": ch.key not in self.off})
+            if ch.key in self.off or ch.of in self.off:
+                continue
             new[ch.key] = ch
+        self.switch = switch
         changed = [c.signature() for c in new.values()] != [c.signature() for c in self.channels.values()]
         self.channels = new
         return changed
@@ -111,7 +118,7 @@ class Device:
         d = self.drv
         return {"id": self.id, "name": self.name, "driver": d.type_id, "model": d.model, "icon": d.icon,
                 "group": d.group, "parent": self.parent, "status": self.status, "reason": self.reason,
-                "actions": list(d.actions),
+                "actions": list(d.actions), "switch": list(self.switch),
                 "settings": dict(d.cfg), "schema": [f.to_dict() for f in d.settings],
                 "channels": [c.to_dict() for c in self.channels.values()],
                 "samples": self.samples, "last_t": self.last_t}
@@ -261,14 +268,16 @@ class Collector:
 
     @staticmethod
     def _channels_of(dev_id, inv, cls, values):
-        """Каналы прибора при его настройках, с подписями из конфига: для правки подписей."""
+        """Каналы прибора при его настройках, с подписями из конфига: для правки подписей и выключения."""
         labels = {str(k): str(v) for k, v in (inv.get("channels") or {}).items()}
+        off = {str(k) for k in inv.get("disabled") or []}
         try:
             chans = cls(dev_id, inv.get("name"), values, None).channels()
         except Exception:
             return []
         return [{"key": c.key, "name": labels.get(c.key, c.name), "default": c.name, "kind": c.kind,
-                 "unit": c.unit, "hidden": c.hidden} for c in chans]
+                 "unit": c.unit, "hidden": c.hidden, "of": c.of, "on": c.key not in off and c.of not in off}
+                for c in chans]
 
     def _effective(self, dev_id, over=None):
         """Настройки прибора: умолчания драйвера, конфиг, поверх — правки клиента (over[id])."""
@@ -557,6 +566,42 @@ class Collector:
         self._stand_reload()
         return {"id": id}
 
+    def _cmd_channel(self, device, key, on, by=""):
+        """Включить или выключить канал прибора. Запоминается в devices.yaml; в идущем опыте —
+        сразу, с записью в журнал и новым сегментом файла."""
+        inv = self.cfg.devices.get(device)
+        if inv is None:
+            raise CollectorError(f"Нет прибора «{device}»")
+        dev = self.devices.get(device)
+        if dev is not None:
+            switch = dev.switch
+        else:
+            cls = REGISTRY[inv["driver"]]
+            try:
+                values = self._effective(device)
+            except DriverError:
+                values = cls.defaults()
+            switch = [c for c in self._channels_of(device, inv, cls, values) if not c["of"]]
+        names = {c["key"]: c["name"] for c in switch}
+        if key not in names:
+            raise CollectorError(f"У прибора нет канала «{key}»")
+        off = {str(k) for k in inv.get("disabled") or []}
+        off = off - {key} if on else off | {key}
+        if len(off & set(names)) == len(names):
+            raise CollectorError("Хотя бы один канал должен остаться")
+        order = [c["key"] for c in switch]
+        off_list = sorted(off, key=lambda k: order.index(k) if k in order else len(order))
+        if self.cfg.dir is not None:
+            stand.set_off(self.cfg.dir, device, off_list)
+        inv["disabled"] = off_list
+        if dev is not None:
+            dev.off = set(off_list)
+            self._channels_changed(dev)
+            self._journal("set", f"{dev.name}: {names[key]} — {'включён' if on else 'выключен'}", by=by,
+                          device=device, channel=key, on=bool(on))
+        self._publish({"type": "inventory", "inventory": self._inventory(), "found": self.found})
+        return {"off": off_list}
+
     def _cmd_device_del(self, id, by=""):
         self._stand_check()
         if id not in self.cfg.devices:
@@ -811,9 +856,9 @@ class Collector:
                 self.hist.setdefault(f"{dev.id}:{k}", History())
 
     def _channels_changed(self, dev):
-        before = [c.to_dict() for c in dev.channels.values()]
+        before = [c.to_dict() for c in dev.channels.values()], list(dev.switch)
         if not dev.refresh_channels():
-            if [c.to_dict() for c in dev.channels.values()] != before:     # набор тот же, сдвинулась зона на кадре
+            if ([c.to_dict() for c in dev.channels.values()], dev.switch) != before:   # сдвинулась зона на кадре
                 self._publish({"type": "device", "device": dev.info()})
             return
         self._index_channels(dev)
@@ -1019,7 +1064,7 @@ class Collector:
             "devices": {d.id: {"driver": d.drv.type_id, "name": d.name, "parent": d.parent,
                                "settings": dict(d.drv.cfg),
                                "channels": [c.to_dict() for c in d.channels.values()],
-                               "files": self.storage.describe(d.id)}
+                               "disabled": sorted(d.off), "files": self.storage.describe(d.id)}
                         for d in self.devices.values()},
             "alarms": s["rules"],
         }

@@ -97,7 +97,7 @@ class PTA8D08(Driver):
         rate = 1 / float(self.cfg["period"])
         ch = [Channel(f"T{i}", f"ch{i}", "scalar", "°C", rate, dp=1) for i in range(1, NCH + 1)]
         if self.cfg["write_r"]:
-            ch += [Channel(f"R{i}", f"R{i}", "scalar", "Ом", rate, dp=1, hidden=True) for i in range(1, NCH + 1)]
+            ch += [Channel(f"R{i}", f"R{i}", "scalar", "Ом", rate, dp=1, hidden=True, of=f"T{i}") for i in range(1, NCH + 1)]
         return ch
 
     def open(self):

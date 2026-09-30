@@ -469,8 +469,11 @@ function connOf(inv) {
   if (s.port) parts.push(s.port);
   if (s.baud) parts.push(s.baud + ' бод');
   if (s.addr != null) parts.push('адр. ' + s.addr);
+  const sw = (inv.channels || []).filter(c => !c.of);
+  if (sw.some(c => !c.on)) parts.push(`каналов ${sw.filter(c => c.on).length}/${sw.length}`);
   return parts.join(' · ');
 }
+const swHTML = (dev, key, on, label) => `<label class="sw sm" data-tip="${on ? 'Выключить' : 'Включить'}: сразу, запомнится в стенде"><input type="checkbox" data-sw="${esc(key)}" data-dev="${esc(dev)}"${on ? ' checked' : ''} aria-label="${esc(label)}"><span></span></label>`;
 function statusChip(st, inv) {
   const note = inv && (S.found[inv.id] || {}).note;
   return { checking: '<span class="chip chk"><span class="dot chk"></span>проверяю…</span>', ok: '<span class="chip ok"><span class="dot ok"></span>найден</span>',
@@ -1196,14 +1199,14 @@ function renderModal() {
   const status = !M.live ? statusChip(statusOf(d)) : stt === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>на связи</span>' : stt === 'lost' ? `<span class="chip err"><span class="dot err"></span>нет связи</span>` : stt === 'stale' ? '<span class="chip err"><span class="dot warn"></span>нет данных</span>' : '';
   let body = '';
   if (M.tab === 'set') body = `<div class="form" id="mForm">${formHTML(M.id, d.schema, M.draft, lock, M.live)}</div>${lock && d.schema.some(f => f.type !== 'info' && f.type !== 'action' && !f.live) ? '<p class="lockline">Идёт запись: поля с замком меняются на паузе.</p>' : ''}`;
-  else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${d.channels.map(c => `<tr><td>${esc(c.name)}</td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${c.rate ? (c.rate >= 1 ? fmtV(c.rate, c.rate % 1 ? 1 : 0) + ' Гц' : 'раз в ' + fmtV(1 / c.rate, 0) + ' с') : c.kind === 'points' ? 'вручную' : 'по входам'}</td></tr>`).join('')}</tbody></table>`;
+  else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th></th><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${[...d.channels.map(c => ({ c, sw: (d.switch || []).find(x => x.key === c.key) })), ...(d.switch || []).filter(x => !x.on).map(x => ({ off: x }))].map(({ c, sw, off }) => off ? `<tr class="off"><td>${swHTML(d.id, off.key, false, off.name)}</td><td>${esc(off.name)}</td><td colspan="3">выключен</td></tr>` : `<tr><td>${sw ? swHTML(d.id, c.key, true, c.name) : ''}</td><td>${esc(c.name)}</td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${c.rate ? (c.rate >= 1 ? fmtV(c.rate, c.rate % 1 ? 1 : 0) + ' Гц' : 'раз в ' + fmtV(1 / c.rate, 0) + ' с') : c.kind === 'points' ? 'вручную' : 'по входам'}</td></tr>`).join('')}</tbody></table>`;
   else if (M.tab === 'diag') { const ds = S.devStatus[M.id] || {}; body = `<dl class="kv"><dt>Статус</dt><dd>${esc({ ok: 'на связи', lost: 'нет связи', stale: 'нет данных', wait: 'ждём данных' }[ds.status] || ds.status || '—')}</dd>${ds.reason ? `<dt>Причина</dt><dd>${esc(ds.reason)}</dd>` : ''}<dt>Последний отсчёт</dt><dd class="num">${ds.age != null ? fmtV(ds.age, 1) + ' с назад' : '—'}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd></dl>${['direct', 'gateway', 'child'].includes(d.group) ? '<p><button class="btn sm" data-act="reconnect">Переподключить</button></p>' : ''}`; }
   else if (M.tab === 'stand') {
-    const labs = (d.channels || []).filter(c => c.kind === 'scalar' || c.kind === 'points');
+    const rows = (d.channels || []).filter(c => !c.of);
     body = `<div class="form" id="stForm">
       <div class="f-row"><label class="f-l" for="stName">Имя</label><div class="f-c"><input type="text" id="stName" value="${esc(M.stName ?? d.name)}"></div></div>
       <div class="f-row"><span class="f-l">Идентификатор<span class="ii" tabindex="0" data-tip="Имя файлов в папке опыта. Не меняется." aria-label="Идентификатор">i</span></span><span class="f-info mono">${esc(d.id)}</span></div>
-      ${labs.length ? '<div class="f-sub lbl">Подписи каналов</div>' + labs.map(c => `<div class="f-row"><label class="f-l mono" for="lab-${esc(c.key)}">${esc(c.key)}</label><div class="f-c"><input type="text" id="lab-${esc(c.key)}" data-lab="${esc(c.key)}" value="${c.name !== c.default ? esc(c.name) : ''}" placeholder="${esc(c.default)}"></div></div>`).join('') : ''}
+      ${rows.length ? '<div class="f-sub lbl">Каналы<span class="ii" tabindex="0" data-tip="Переключатель — канал пишется или нет (датчик не подключён). Подпись — как канал называется в опыте." aria-label="Каналы">i</span></div>' + rows.map(c => `<div class="f-row ch-row${c.on ? '' : ' off'}"><span class="f-l">${swHTML(d.id, c.key, c.on, c.key)}<span class="mono">${esc(c.key)}</span></span><div class="f-c">${c.kind === 'scalar' || c.kind === 'points' ? `<input type="text" id="lab-${esc(c.key)}" data-lab="${esc(c.key)}" value="${c.name !== c.default ? esc(c.name) : ''}" placeholder="${esc(c.default)}" aria-label="Подпись ${esc(c.key)}">` : `<span class="f-info">${esc(c.name)}</span>`}</div></div>`).join('') : ''}
     </div>`;
   }
   else if (M.tab === 'input') { const c = d.channels[0]; body = `<div class="form"><div class="f-row"><label class="f-l" for="mVal">${esc(c.name)}</label><div class="f-c"><input type="number" id="mVal" step="any" inputmode="decimal"><span class="unit">${esc(c.unit)}</span><button class="btn sm primary" data-act="manualAdd">Записать</button></div></div></div>`; }
@@ -1453,6 +1456,15 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"][data-act]')) { e.preventDefault(); e.target.click(); } });
 document.addEventListener('change', e => {
+  if (e.target.matches && e.target.matches('[data-sw]')) {
+    const el = e.target, on = el.checked, row = el.closest('.ch-row, tr');
+    run('channel', { device: el.dataset.dev, key: el.dataset.sw, on, by: BY }).then(r => {
+      if (!r) { el.checked = !on; return; }
+      if (row) row.classList.toggle('off', !on);
+      if (M && M.live && M.tab === 'ch') setTimeout(() => { if (M) renderModal(); }, 150);   // после сообщения device
+    });
+    return;
+  }
   if (e.target.id === 'showMissing') { keepName(); S.showMissing = e.target.checked; renderSelect(); }
   else if (e.target.id === 'tplSel') {
     keepName(); S.template = e.target.value; const t = S.templates[S.template];

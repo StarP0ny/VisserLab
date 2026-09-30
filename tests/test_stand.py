@@ -96,3 +96,42 @@ def test_template_from_run(coll):
     assert not coll.request("template_save", name="после стопа")["exists"]   # и сразу после стопа
     with pytest.raises(CollectorError, match="Нужно имя"):
         coll.request("template_save", name=" / ")
+
+
+def test_channels_on_off(coll):
+    import csv
+    coll.request("channel", device="sim_pt100", key="T2", on=False)
+    assert yaml.safe_load(text(coll))["devices"]["sim_pt100"]["disabled"] == ["T2"]
+    inv = {i["id"]: i for i in coll.request("hello")["inventory"]}
+    assert {c["key"]: c["on"] for c in inv["sim_pt100"]["channels"]}["T2"] is False
+
+    coll.request("device_add", driver="pta8d08", id="pt")      # спутники: R2 уходит вместе с T2
+    coll.request("channel", device="pt", key="T2", on=False)
+    ch = {c["key"]: c for c in {i["id"]: i for i in coll.request("hello")["inventory"]}["pt"]["channels"]}
+    assert ch["R2"]["of"] == "T2" and ch["R2"]["on"] is False and ch["R3"]["on"] is True
+    with pytest.raises(CollectorError, match="нет канала"):
+        coll.request("channel", device="pt", key="R3", on=False)   # спутник сам по себе не выключается
+
+    coll.request("prepare", devices=["sim_pt100"], settings={"sim_pt100": {"period": "0.05"}})
+    dev = coll.devices["sim_pt100"]
+    assert "T2" not in dev.channels and {c["key"]: c["on"] for c in dev.info()["switch"]}["T2"] is False
+    coll.request("start")
+    import time
+    time.sleep(0.3)
+    coll.request("channel", device="sim_pt100", key="T3", on=False, by="ПК")
+    coll.request("channel", device="sim_pt100", key="T2", on=True)
+    time.sleep(0.3)
+    assert "T2" in dev.channels and "T3" not in dev.channels
+    for k in ("T1", "T4", "T5", "T6", "T7", "T2"):
+        coll.request("channel", device="sim_pt100", key=k, on=False)
+    with pytest.raises(CollectorError, match="Хотя бы один"):
+        coll.request("channel", device="sim_pt100", key="T8", on=False)
+    coll.request("pause")
+    run = coll.request("stop")
+    d = Path(run["dir"])
+    assert next(csv.reader((d / "sim_pt100.csv").open(encoding="utf-8")))[:3] == ["t_unix", "T1", "T3"]
+    assert "T3" not in next(csv.reader((d / "sim_pt100.2.csv").open(encoding="utf-8")))
+    ev = (d / "events.jsonl").read_text(encoding="utf-8")
+    assert "выключен" in ev and "включён" in ev
+    meta = yaml.safe_load((d / "meta.yaml").read_text(encoding="utf-8"))
+    assert meta["devices"]["sim_pt100"]["disabled"] == ["T1", "T2", "T3", "T4", "T5", "T6", "T7"]
