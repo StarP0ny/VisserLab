@@ -1,102 +1,111 @@
-"""Регистратор прогона.
+"""Запись без веб-интерфейса: сборщик в этом же процессе, управление из консоли.
 
-Каждый источник — свой поток и свой файл; падение одного не трогает остальные.
-Метки оператора приходят построчно со stdin: сейчас из консоли, позже web-UI
-будет запускать регистратор подпроцессом и писать в тот же stdin.
-
-  Enter          быстрая метка («метка N»), текст дописать потом
-  текст + Enter  метка с текстом
+  Enter          метка
+  текст + Enter  заметка
+  p              пауза / продолжить
   q              стоп
 """
 import sys
 import threading
 import time
-from pathlib import Path
 
-import yaml
+from .core.collector import Collector, CollectorError, fmt_dur
+from .core.driver import fmt_num
 
-from .run import REPO, Run
-from .sources.pt100 import Pt100Source
-
-SOURCES = {"pt100": Pt100Source}
+GLYPH = {"user": "✎", "mark": "▸", "sys": "·", "state": "●", "set": "⚙", "manual": "✚", "warn": "⚠", "crit": "✕"}
 STATUS_EVERY_S = 10
+BY = "консоль"
 
 
-def load_stand(path):
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+class ConsoleLog:
+    """Печатает журнал и раз в STATUS_EVERY_S секунд строку значений."""
+    frames = False
+
+    def __init__(self, coll, status_every=STATUS_EVERY_S):
+        self.coll, self.every, self.next = coll, status_every, time.time() + 2
+
+    def send(self, msg):
+        typ = msg["type"]
+        if typ == "event":
+            e = msg["event"]
+            by = f"  · {e['by']}" if e.get("by") else ""
+            print(f"  {time.strftime('%H:%M:%S', time.localtime(e['t']))}  {GLYPH.get(e['kind'], '·')} {e['text']}{by}", flush=True)
+        elif typ == "status" and self.every and time.time() >= self.next:
+            self.next = time.time() + self.every
+            print(self._status(msg), flush=True)
+
+    def _status(self, msg):
+        el = fmt_dur(msg["elapsed"]) if msg.get("elapsed") is not None else "подготовка"
+        parts = []
+        for d in self.coll.devices.values():
+            vis = [c for c in d.channels.values() if c.kind == "scalar" and not c.hidden][:6]
+            vals = []
+            for c in vis:
+                v = msg["last"].get(f"{d.id}:{c.key}")
+                vals.append(f"{c.key}={fmt_num(v, c.dp)}" if isinstance(v, float) else f"{c.key}=—")
+            if vals:
+                parts.append(f"{d.name}: " + " ".join(vals))
+        lvl = {"ok": "", "warn": "  ⚠", "crit": "  ✕"}[msg["alarms"]["level"]]
+        return f"[{el}]{lvl}  " + " | ".join(parts)
 
 
-def _status_line(run, sources):
-    parts = [f"[{time.time() - run.started:6.0f} с]"]
-    for s in sources:
-        if s.latest is None:
-            parts.append(f"{s.name}: нет данных")
-            continue
-        _, T, _ = s.latest
-        parts.append("  ".join(f"{label}={T[ch - 1]}" for ch, label in s.labels()))
-        if s.n_fail:
-            parts.append(f"(сбоев {s.n_fail})")
-    return "  ".join(parts)
+def record(cfg, name="", note="", devices=None, template=None, duration=None):
+    coll = Collector(cfg).launch()
+    coll.subscribe(ConsoleLog(coll))
+    try:
+        if not devices and not template:
+            devices = cfg.record_default
+        coll.request("prepare", name=name, devices=devices, template=template, note=note, by=BY)
+        res = coll.request("start", by=BY)
+        print(f"Опыт: {res['dir']}")
+        print("Enter — метка, текст — заметка, p — пауза, q — стоп"
+              + (f"; автостоп через {duration:g} с" if duration else ""), flush=True)
+        stop = threading.Event()
+        threading.Thread(target=_stdin, args=(coll, stop, bool(duration)), daemon=True).start()
+        deadline = time.time() + duration if duration else None
+        while not stop.is_set():                  # короткие ожидания: Ctrl-C на Windows
+            if deadline and time.time() >= deadline:
+                break
+            stop.wait(0.2)
+    except CollectorError as e:
+        print(f"Ошибка: {e}", file=sys.stderr)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        run = _finish(coll)
+        coll.close(by=BY)
+        if run:
+            print(f"\nЗаписано {fmt_dur(run['duration_s'])} → {run['dir']}")
 
 
-def _stdin_loop(run, stop, has_duration):
+def _finish(coll):
+    try:
+        if coll.state == "rec":
+            coll.request("pause", by=BY)
+        if coll.state == "pause":
+            return coll.request("stop", by=BY)
+        if coll.state == "prep":
+            coll.request("cancel", by=BY)
+    except CollectorError as e:
+        print(f"Ошибка: {e}", file=sys.stderr)
+    return None
+
+
+def _stdin(coll, stop, has_duration):
     while not stop.is_set():
         line = sys.stdin.readline()
-        if not line:  # EOF: консоль закрыта или UI отпустил pipe
+        if not line:                              # EOF
             if not has_duration:
                 stop.set()
             return
         text = line.strip()
-        if text.lower() == "q":
-            stop.set()
-            return
-        rec = run.mark(text)
-        print(f"  ✓ {time.strftime('%H:%M:%S', time.localtime(rec['t_unix']))}  {rec['text']}",
-              flush=True)
-
-
-def record(config, name="", note="", duration=None, runs_dir=None):
-    stand = load_stand(config)
-    runs_dir = Path(runs_dir or REPO / stand.get("runs_dir", "runs"))
-    run = Run(runs_dir, name, stand, note)
-
-    sources = [SOURCES[key](cfg, run) for key, cfg in (stand.get("sources") or {}).items()
-               if key in SOURCES and cfg.get("enabled", True)]
-    if not sources:
-        sys.exit("В stand.yaml нет включённых источников")
-
-    print(f"Прогон: {run.dir}")
-    print("Enter — метка, текст+Enter — метка с текстом, q — стоп"
-          + (f"; автостоп через {duration:g} с" if duration else ""), flush=True)
-
-    run.event("старт записи", "system")
-    for s in sources:
-        s.start()
-
-    stop = threading.Event()
-    threading.Thread(target=_stdin_loop, args=(run, stop, bool(duration)), daemon=True).start()
-
-    deadline = run.started + duration if duration else None
-    next_status = time.time() + 2
-    try:
-        # короткие ожидания: на Windows Ctrl-C не прерывает долгий Event.wait()
-        while not stop.is_set():
-            now = time.time()
-            if deadline and now >= deadline:
-                break
-            if now >= next_status:
-                print(_status_line(run, sources), flush=True)
-                next_status = now + STATUS_EVERY_S
-            stop.wait(0.2)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        for s in sources:
-            s.stop()
-        run.event("стоп записи", "system")
-        summary = {s.name: s.summary() for s in sources}
-        summary["marks"] = run.n_marks
-        run.close(summary)
-        print(f"\nСтоп. {summary}\nЛежит в {run.dir}")
-    return run
+        try:
+            if text.lower() == "q":
+                stop.set()
+                return
+            if text.lower() == "p":
+                coll.request("pause" if coll.state == "rec" else "resume", by=BY)
+            else:
+                coll.request("note", text=text, by=BY)
+        except CollectorError as e:
+            print(f"  {e}", flush=True)

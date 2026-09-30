@@ -1,0 +1,9 @@
+name: sim
+devices: [sim_pt100, sim_thermal, sim_scd41, sim_sht1, sim_sdp, syringe, sim_ah]
+settings:
+  sim_pt100: {speed: "10"}
+  sim_thermal: {speed: "10"}
+  sim_mk: {speed: "10"}
+alarms:
+  - {channel: "sim_pt100:T1", op: ">", value: 130, clear: 128, hold: 3, level: warn, text: "Корпус на входе > 130 °C"}
+  - {channel: "sim_sht1:rh", op: ">", value: 95, clear: 93, hold: 3, level: warn, text: "SHT45 #1: риск конденсата"}

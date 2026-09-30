@@ -1,0 +1,4 @@
+name: patron
+devices: [pt100, syringe]
+alarms:
+  - {channel: "pt100:T1", op: ">", value: 130, clear: 128, hold: 3, level: warn, text: "Корпус на входе > 130 °C"}
