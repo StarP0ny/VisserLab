@@ -3,10 +3,12 @@
 Своя реализация вместо pymodbus: протокол на 40 строк, а поведение при выдернутом
 USB (закрыть порт, раз в пару секунд пробовать открыть снова) нужно своё.
 """
+import re
 import struct
 import time
 
 import serial
+from serial.tools import list_ports
 
 
 def crc16(data: bytes) -> bytes:
@@ -22,6 +24,28 @@ def s16(w: int) -> int:
     return w - 0x10000 if w & 0x8000 else w
 
 
+def reply_timeout(baud, margin=0.03):
+    """Сколько ждать начала ответа: 8 байт запроса и 3 байта ответа по 11 бит плюс запас."""
+    return margin + 11 * 11 / baud
+
+
+def port_error(e):
+    """Причина, по которой порт не открылся, коротко: «порт: нет в системе»."""
+    s = str(e)
+    if "FileNotFoundError" in s or "No such file" in s:
+        return "порт: нет в системе"
+    if "PermissionError" in s or "Access is denied" in s or "Busy" in s:
+        return "порт: занят другой программой"
+    return f"порт: {e}"
+
+
+def serial_ports():
+    """[(порт, описание)] — что сейчас видно в системе, COM3 раньше COM26."""
+    key = lambda p: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", p.device)]
+    desc = lambda p: re.sub(r"\s*\(%s\)$" % re.escape(p.device), "", p.description or "")   # «… (COM26)»
+    return [(p.device, desc(p)) for p in sorted(list_ports.comports(), key=key)]
+
+
 class RtuClient:
     REOPEN_EVERY_S = 2.0
 
@@ -30,6 +54,20 @@ class RtuClient:
         self.ser = None
         self.last_error = None
         self._next_open = 0.0
+
+    def connect(self):
+        """Открыть порт сейчас. False — не открылся, причина в last_error."""
+        self._next_open = 0.0
+        return self._ensure_open()
+
+    def set_line(self, baud=None, timeout=None):
+        """Сменить скорость и таймаут, не закрывая порт: перебор скоростей без переоткрытия."""
+        if baud is not None:
+            self.baud = baud
+        if timeout is not None:
+            self.timeout = timeout
+        if self.ser is not None:
+            self.ser.baudrate, self.ser.timeout = self.baud, self.timeout
 
     def _ensure_open(self):
         if self.ser is not None:
@@ -43,7 +81,7 @@ class RtuClient:
                                      stopbits=1, timeout=self.timeout)
             return True
         except serial.SerialException as e:
-            self.last_error = f"порт: {e}"
+            self.last_error = port_error(e)
             return False
 
     def close(self):

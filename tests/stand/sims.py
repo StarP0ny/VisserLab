@@ -1,5 +1,8 @@
 """Приборы-симуляторы: ядро и интерфейс разрабатываются и тестируются без стенда.
 
+Подключаются через `plugins` в tests/stand/devices.yaml, в основной конфиг не входят:
+  python -m visserlab --config tests/stand collect
+
 Физика та же, что в макете: от старта записи патрон греется, фронт идёт от
 входа к выходу, мешок копит CO₂. Настройка «Скорость времени» ускоряет процесс.
 """
@@ -9,7 +12,7 @@ import time
 
 import numpy as np
 
-from ..core.driver import Channel, Driver, Field, Found, Ticker, fmt_num, register
+from visserlab.core.driver import Channel, Driver, Field, Found, Ticker, fmt_num, register
 
 AMB, LEN = 23.0, 180.0      # °C среды; мм корпуса под полосой
 
@@ -98,6 +101,53 @@ class SimPt100(_Sim):
             self.ctx.emit({f"T{i + 1}": f(t, a) + g(0.06) for i, f in enumerate(self.GEN)}, a)
             if tick.wait(stop, float(self.cfg["period"])):
                 return
+
+
+# ---------- Pt100 на Modbus-шине: для перебора. Плата «сидит» по адресу из BUS, а не из настроек
+BUS = {"SIM1": ("19200", 7)}        # порт → (скорость, адрес)
+SIM_BAUDS = ["4800", "9600", "19200", "38400"]
+SIM_STEP_S = 0.01                   # одна попытка перебора
+
+
+@register
+class SimRtu(SimPt100):
+    type_id = "sim_rtu"
+    title = "Pt100 ×8 на шине (сим)"
+    model = "симулятор PTA8D08 · Modbus"
+    scan_what = "скорость и адрес Modbus"
+    settings = [Field("port", "Порт", "port", "SIM1"),
+                Field("baud", "Скорость", "select", "9600", unit="бод", options=SIM_BAUDS),
+                Field("addr", "Адрес Modbus", "number", 1, min=1, max=247, step=1)] + SimPt100.settings
+
+    @classmethod
+    def _here(cls, cfg):
+        return BUS.get(cfg["port"]) == (str(cfg["baud"]), int(cfg["addr"]))
+
+    @classmethod
+    def discover(cls, cfg, children=None):
+        ok = cls._here(cfg)
+        return Found(ok, "" if ok else "таймаут")
+
+    @classmethod
+    def scan(cls, cfg, report, stop, taken=()):
+        busy = {int(t["addr"]) for t in taken if t.get("port") == cfg["port"] and t.get("addr") is not None}
+        bauds = [cfg["baud"]] + [b for b in SIM_BAUDS if b != cfg["baud"]]
+        addrs = [a for a in range(1, 248) if a not in busy]
+        total = len(bauds) * len(addrs)
+        for n, (b, a) in enumerate((b, a) for b in bauds for a in addrs):
+            if stop.is_set() or (SIM_STEP_S and stop.wait(SIM_STEP_S)):
+                return None
+            report(n / total, f"{cfg['port']} · {b} бод · адрес {a}")
+            if cls._here({"port": cfg["port"], "baud": b, "addr": a}):
+                return {"port": cfg["port"], "baud": b, "addr": a}
+        return None
+
+    def run(self, stop):
+        if not self._here(self.cfg):
+            self.ctx.online(False, "таймаут")
+            stop.wait()
+            return
+        super().run(stop)
 
 
 # ---------- тепловизор: кадр 256×192, корпус с чёрной полосой, гофра слева, мешок справа

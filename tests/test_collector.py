@@ -32,11 +32,15 @@ class Silent(Driver):
         return [Channel("x", "x", "scalar", "", 20)]
 
 
+STAND = Path(__file__).with_name("stand")         # симуляторы: tests/stand/sims.py
+
+
 def make(tmp_path, **kw):
-    base = load()
+    base = load(STAND, local_on=False)
     devices = dict(base.devices, silent={"driver": "test_silent"})
     cfg = Config(devices=devices, templates=base.templates, runs_dir=tmp_path / "runs",
-                 preroll_s=2, preroll_fps=5, push_hz=20, frame_push_fps=10, **kw)
+                 preroll_s=2, preroll_fps=5, push_hz=20, frame_push_fps=10,
+                 local_path=tmp_path / "local.yaml", **kw)
     return Collector(cfg).launch()
 
 

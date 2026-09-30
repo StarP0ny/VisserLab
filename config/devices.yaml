@@ -1,6 +1,8 @@
 # Приборы стенда: id → драйвер, имя, настройки (параметры подключения — тоже настройки).
 # Подписи каналов переопределяются в `channels`. Приборы за шлюзом — в `children` шлюза.
 # Снимок всего этого на момент старта попадает в meta.yaml опыта.
+# Что нашёл перебор в интерфейсе, сохраняется рядом в local.yaml и перекрывает settings отсюда.
+# Симуляторы для работы без стенда — в tests/stand: python -m visserlab --config tests/stand collect
 
 collector:
   port: 8765
@@ -33,26 +35,3 @@ devices:
     driver: manual
     name: Весы
     settings: {channel: масса, unit: г, dp: 2}
-
-  # ---- симуляторы: разработка интерфейса и тесты без стенда
-  sim_pt100:
-    driver: sim_pt100
-    channels:
-      T1: ch1 корпус, вход
-      T2: ch2 корпус, середина
-      T3: ch3 корпус, выход
-      T8: ch8 среда
-  sim_thermal:
-    driver: sim_thermal
-  sim_mk:
-    driver: sim_mk
-    name: МК-1 (сим)
-    children:
-      sim_scd41: {driver: sim_scd41, name: "SCD41 #1 (сим)"}
-      sim_sht1: {driver: sim_sht45, name: "SHT45 #1 (сим)", settings: {place: inlet}}
-      sim_sht2: {driver: sim_sht45, name: "SHT45 #2 (сим)", sim_absent: true}
-      sim_sdp: {driver: sim_sdp810, name: "SDP810 (сим)"}
-  sim_ah:
-    driver: abs_humidity
-    name: Абс. влажность (сим)
-    settings: {rh: "sim_sht1:rh", t: "sim_sht1:t"}

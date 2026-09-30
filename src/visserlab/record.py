@@ -10,7 +10,7 @@ import threading
 import time
 
 from .core.collector import Collector, CollectorError, fmt_dur
-from .core.driver import fmt_num
+from .core.driver import REGISTRY, fmt_num
 
 GLYPH = {"user": "✎", "mark": "▸", "sys": "·", "state": "●", "set": "⚙", "manual": "✚", "warn": "⚠", "crit": "✕"}
 STATUS_EVERY_S = 10
@@ -23,6 +23,7 @@ class ConsoleLog:
 
     def __init__(self, coll, status_every=STATUS_EVERY_S):
         self.coll, self.every, self.next = coll, status_every, time.time() + 2
+        self.scanning = False
 
     def send(self, msg):
         typ = msg["type"]
@@ -33,6 +34,21 @@ class ConsoleLog:
         elif typ == "status" and self.every and time.time() >= self.next:
             self.next = time.time() + self.every
             print(self._status(msg), flush=True)
+        elif typ == "scan":
+            self._scan(msg["scan"])
+
+    def _name(self, dev_id):
+        inv = self.coll.cfg.devices.get(dev_id) or {}
+        return inv.get("name") or getattr(REGISTRY.get(inv.get("driver")), "title", dev_id)
+
+    def _scan(self, sc):
+        if sc["run"] and not self.scanning:
+            print(f"  перебор: {', '.join(self._name(i) for i in sc['ids'])}…", flush=True)
+        elif not sc["run"] and self.scanning:
+            for i, r in sc["done"].items():
+                how = " ".join(f"{k}={v}" for k, v in (r.get("settings") or {}).items())
+                print(f"  перебор: {self._name(i)} — " + (f"найден: {how}" if r["ok"] else r["note"]), flush=True)
+        self.scanning = sc["run"]
 
     def _status(self, msg):
         el = fmt_dur(msg["elapsed"]) if msg.get("elapsed") is not None else "подготовка"

@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from ..config import code_version
+from ..config import code_version, save_local
 from .alarms import Alarms, RuleError
 from .buffers import History, Ring
 from .driver import ARRAY_KINDS, KINDS, REGISTRY, DriverError, Found
@@ -31,6 +31,7 @@ IDLE, PREP, REC, PAUSE = "idle", "prep", "rec", "pause"
 STATE_RU = {IDLE: "нет опыта", PREP: "подготовка", REC: "запись", PAUSE: "пауза"}
 RETRY_S = 2.0          # пауза перед повторным открытием отвалившегося прибора
 WAIT_GRACE_S = 5.0     # сколько ждать первых данных после открытия
+SCAN_PUSH_S = 0.1      # прогресс перебора клиентам, не чаще
 
 
 class CollectorError(Exception):
@@ -122,6 +123,9 @@ class Collector:
         self._thread, self._alive = None, False
         self.found = {}
         self.last_run = None
+        self.scan = {"run": False, "ids": [], "cur": None, "frac": 0.0, "text": "", "done": {}}
+        self._scan_stop, self._scan_thread = threading.Event(), None
+        self._probing = threading.Lock()        # «Обновить» и перебор не открывают порты одновременно
         self._reset()
 
     def _reset(self):
@@ -148,12 +152,15 @@ class Collector:
 
     def close(self, by="сборщик"):
         """Останавливает сборщик. Идущий опыт останавливается и сохраняется."""
+        self._scan_stop.set()
         if not self._alive:
             return
         try:
             self.request("shutdown", by=by)
         finally:
             self._thread.join(timeout=15)
+            if self._scan_thread is not None:
+                self._scan_thread.join(timeout=5)
 
     def subscribe(self, sub):
         """sub.send(msg: dict) вызывается из потока диспетчера и не должен блокировать;
@@ -185,15 +192,20 @@ class Collector:
     def request(self, cmd, **args):
         """Выполняет команду в потоке диспетчера и возвращает результат.
         Потокобезопасно: так команды приходят из сервера и консоли."""
-        if cmd == "discover":           # опрашивает железо — не держим очередь
-            return self._discover()
+        outside = {"discover": self._discover, "scan": self._scan_begin,     # опрашивают железо —
+                   "scan_stop": self._scan_halt, "ports": self._ports}       # не держим очередь
+        if cmd in outside:
+            return outside[cmd](**args)
         fn = getattr(self, "_cmd_" + cmd, None)
         if fn is None:
             raise CollectorError(f"Нет команды «{cmd}»")
-        if threading.current_thread() is self._thread:
-            return fn(**args)
-        if not self._alive:
+        if threading.current_thread() is not self._thread and not self._alive:
             raise CollectorError("Сборщик остановлен")
+        return self._dispatch(fn, **args)
+
+    def _dispatch(self, fn, **args):
+        if threading.current_thread() is self._thread or not self._alive:
+            return fn(**args)
         fut = Future()
         self._q.put(("C", fn, args, fut))
         return fut.result(timeout=60)
@@ -227,6 +239,7 @@ class Collector:
             "alarms": self.alarms.state(),
             "events": list(s["events"]) if s else [],
             "last": self._last_scalars(),
+            "scan": dict(self.scan),
         }
 
     def _inventory(self):
@@ -240,10 +253,25 @@ class Collector:
             except DriverError:
                 values = {**cls.defaults(), **(inv.get("settings") or {})}
             out.append({**d, "id": i, "name": inv.get("name") or cls.title, "parent": inv.get("parent"),
-                        "settings": values, "found": self.found.get(i)})
+                        "settings": values, "found": self.found.get(i), "local": self.cfg.local.get(i)})
         return out
 
-    def _discover(self):
+    def _effective(self, dev_id, over=None):
+        """Настройки прибора: умолчания драйвера, конфиг, поверх — правки клиента (over[id])."""
+        inv = self.cfg.devices[dev_id]
+        cls = REGISTRY[inv["driver"]]
+        return {**cls.defaults(), **cls.validate({**(inv.get("settings") or {}), **((over or {}).get(dev_id) or {})})}
+
+    def _discover(self, settings=None):
+        """Одна проверка каждого прибора. settings — правки клиента, ещё не ушедшие в prepare."""
+        if not self._probing.acquire(blocking=False):
+            raise CollectorError("Идёт перебор приборов" if self.scan["run"] else "Проверка уже идёт")
+        try:
+            return self._discover_all(settings)
+        finally:
+            self._probing.release()
+
+    def _discover_all(self, settings):
         busy = dict(self.devices)
         res = {}
         for i, inv in self.cfg.devices.items():
@@ -255,7 +283,7 @@ class Collector:
                 f = Found(busy[i].status == "ok", "в работе", [c for c in kids if c in busy])
             else:
                 try:
-                    f = cls.discover({**cls.defaults(), **cls.validate(inv.get("settings") or {})}, kids)
+                    f = cls.discover(self._effective(i, settings), kids)
                 except Exception as e:
                     f = Found(False, _reason(e))
             res[i] = {"ok": f.ok, "note": f.note}
@@ -269,6 +297,8 @@ class Collector:
 
     def _cmd_prepare(self, name="", devices=None, template=None, settings=None, note="", alarms=None, by=""):
         self._need(IDLE)
+        if self.scan["run"]:
+            raise CollectorError("Идёт перебор приборов: дождитесь или остановите")
         tpl = {}
         if template:
             tpl = self.cfg.templates.get(template)
@@ -456,7 +486,8 @@ class Collector:
         if not root.is_dir():
             return []
         out = []
-        for d in sorted((p for p in root.iterdir() if p.is_dir()), reverse=True)[:int(limit)]:
+        runs = (p for p in root.iterdir() if (p / "meta.yaml").is_file())     # runs/sim и прочее — мимо
+        for d in sorted(runs, reverse=True)[:int(limit)]:
             try:
                 m = yaml.safe_load((d / "meta.yaml").read_text(encoding="utf-8")) or {}
             except (OSError, yaml.YAMLError):
@@ -482,6 +513,126 @@ class Collector:
             self._cmd_cancel(by=by)
         self._alive = False
         return self.last_run
+
+    # ================= перебор =================
+    def _scan_begin(self, devices=None, port=None, settings=None, by=""):
+        """Перебор параметров подключения в своём потоке; прогресс — сообщениями scan.
+        devices — кого искать (по умолчанию все ненайденные, у кого драйвер умеет перебор);
+        port — другой порт, только для одного прибора; settings — правки клиента."""
+        ids = self._dispatch(self._scan_claim, devices=devices, port=port)
+        self._scan_thread = threading.Thread(target=self._scan_run, args=(ids, port, settings or {}),
+                                             name="scan", daemon=True)
+        self._scan_thread.start()
+        return {"devices": ids}
+
+    def _scan_claim(self, devices, port):
+        """В потоке диспетчера, чтобы перебор и prepare не разошлись по одним портам."""
+        if self.scan["run"]:
+            raise CollectorError("Перебор уже идёт")
+        if self.state != IDLE:
+            raise CollectorError("Перебор — только до подготовки опыта")
+        inv = self.cfg.devices
+        if devices is None:
+            ids = [i for i, d in inv.items() if not d.get("parent") and REGISTRY[d["driver"]].scan_what
+                   and not (self.found.get(i) or {}).get("ok")]
+            if not ids:
+                raise CollectorError("Искать некого: все приборы на связи")
+        else:
+            ids = [str(i) for i in devices]
+            for i in ids:
+                if i not in inv:
+                    raise CollectorError(f"Нет прибора «{i}»")
+                cls = REGISTRY[inv[i]["driver"]]
+                if not cls.scan_what:
+                    raise CollectorError(f"{inv[i].get('name') or cls.title}: перебор не поддерживается")
+        if port and len(ids) != 1:
+            raise CollectorError("Порт задаётся для одного прибора")
+        if not self._probing.acquire(blocking=False):      # отпустит _scan_run
+            raise CollectorError("Идёт проверка приборов")
+        self._scan_stop.clear()
+        self.scan = {"run": True, "ids": ids, "cur": None, "frac": 0.0, "text": "", "done": {}}
+        self._publish_scan()
+        return ids
+
+    def _scan_halt(self):
+        self._scan_stop.set()
+        return {"run": self.scan["run"]}
+
+    def _scan_run(self, ids, port, over):
+        inv, done, last = self.cfg.devices, {}, [0.0]
+        taken = []                  # чужие адреса: кто найден или ещё не проверялся
+        for i, d in inv.items():
+            if i not in ids and not d.get("parent") and (self.found.get(i) or {}).get("ok", True):
+                try:
+                    taken.append(self._effective(i))
+                except DriverError:
+                    pass
+
+        def report(frac, text):
+            self.scan["frac"], self.scan["text"] = max(0.0, min(1.0, float(frac))), str(text)
+            now = time.monotonic()
+            if now - last[0] >= SCAN_PUSH_S:
+                last[0] = now
+                self._publish_scan()
+
+        try:
+            for i in ids:
+                if self._scan_stop.is_set():
+                    break
+                cls = REGISTRY[inv[i]["driver"]]
+                self.scan.update(cur=i, frac=0.0, text="")
+                self._publish_scan()
+                res, note, cfg = None, "", {}
+                try:
+                    cfg = self._effective(i, over)
+                    if port:
+                        cfg["port"] = str(port)
+                    res = cls.scan(cfg, report, self._scan_stop, list(taken))
+                    res = cls.validate(res) if res else None
+                except Exception as e:
+                    note = _reason(e)
+                if res:
+                    self._dispatch(self._scan_found, dev_id=i, changes=res)
+                    taken.append({**cfg, **res})
+                    done[i] = {"ok": True, "note": "", "settings": res}
+                elif self._scan_stop.is_set():
+                    done[i] = {"ok": False, "note": "остановлено"}
+                else:
+                    done[i] = {"ok": False, "note": note or "перебор: никто не ответил"}
+                    self._dispatch(self._scan_missing, dev_id=i, note=done[i]["note"])
+                self.scan["done"] = dict(done)
+        finally:
+            self.scan = {"run": False, "ids": ids, "cur": None, "frac": 1.0, "text": "", "done": done}
+            self._probing.release()
+            self._publish_scan()
+
+    def _scan_found(self, dev_id, changes):
+        cur = self._effective(dev_id)
+        diff = {k: v for k, v in changes.items() if str(cur.get(k)) != str(v)}
+        if diff:
+            save_local(self.cfg, dev_id, diff)
+        self.found[dev_id] = {"ok": True, "note": ""}
+        self._publish({"type": "inventory", "inventory": self._inventory(), "found": self.found})
+
+    def _scan_missing(self, dev_id, note):
+        self.found[dev_id] = {"ok": False, "note": note}
+        self._publish({"type": "found", "found": self.found})
+
+    def _publish_scan(self):
+        self._publish({"type": "scan", "scan": dict(self.scan)})
+
+    def _ports(self):
+        """Последовательные порты системы и какие приборы стенда на них настроены."""
+        from ..modbus import serial_ports
+        used = defaultdict(list)
+        for i, inv in self.cfg.devices.items():
+            try:
+                p = self._effective(i).get("port")
+            except DriverError:
+                p = (inv.get("settings") or {}).get("port")
+            if p and not inv.get("parent"):
+                used[str(p)].append(inv.get("name") or REGISTRY[inv["driver"]].title)
+        return [{"port": p, "desc": desc, "used": used.get(p, [])} for p, desc in serial_ports()]
 
     # ================= приборы =================
     def _spawn(self, dev):

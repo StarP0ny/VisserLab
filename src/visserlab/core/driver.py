@@ -33,7 +33,7 @@ def fmt_num(x, dp=None):
 class Field:
     key: str
     label: str
-    type: str = "text"            # text | number | select | toggle | action | info
+    type: str = "text"            # text | number | select | toggle | port | action | info
     default: object = None
     unit: str = ""
     live: bool = False            # можно менять во время записи
@@ -162,6 +162,7 @@ class Driver:
     group = "direct"
     settings: list[Field] = []
     actions: list[str] = []       # действия прибора, которые интерфейс может предложить (кроме reconnect)
+    scan_what = ""                # что перебирает поиск, для подсказки; пусто — перебора нет
 
     def __init__(self, dev_id, name, cfg, ctx):
         self.id, self.name, self.ctx = dev_id, name or self.title, ctx
@@ -190,12 +191,23 @@ class Driver:
     @classmethod
     def describe(cls):
         return {"driver": cls.type_id, "title": cls.title, "model": cls.model, "icon": cls.icon,
-                "group": cls.group, "settings": [f.to_dict() for f in cls.settings], "actions": list(cls.actions)}
+                "group": cls.group, "settings": [f.to_dict() for f in cls.settings], "actions": list(cls.actions),
+                "scan": cls.scan_what}
 
     @classmethod
     def discover(cls, cfg, children=None) -> Found:
         """Одна проверка на заданных параметрах. Шлюз отвечает ещё и за детей."""
         return Found(True)
+
+    @classmethod
+    def scan(cls, cfg, report, stop, taken=()) -> dict | None:
+        """Перебор параметров подключения, начиная с cfg (порт в нём уже выбран).
+
+        report(frac, text) — доля 0…1 и что пробуем сейчас; stop — threading.Event отмены;
+        taken — настройки других приборов стенда: двое на одной шине не должны найти
+        одно и то же. Возвращает настройки, на которых прибор ответил, или None.
+        """
+        return None
 
     # --- работа
     def channels(self) -> list[Channel]:

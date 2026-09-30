@@ -57,8 +57,8 @@ def test_bridge_to_collector(collector):
         m = until(ws, lambda m: m.get("id") == 1)
         assert m["ok"] and m["result"]["state"] == "idle"
         inv = {i["id"]: i for i in m["result"]["inventory"]}
-        assert inv["pt100"]["settings"]["port"] == "COM26"            # значения не затёрты схемой
-        assert inv["pt100"]["schema"][0]["key"] == "port"
+        assert inv["sim_rtu"]["settings"]["port"] == "SIM1"           # значения не затёрты схемой
+        assert inv["sim_rtu"]["schema"][0]["type"] == "port" and inv["sim_rtu"]["scan"]
         ws.send_text(json.dumps({"id": 2, "cmd": "prepare", "args": {"devices": ["sim_pt100", "sim_thermal"], "settings": FAST, "by": "ПК"}}))
         until(ws, lambda m: m.get("id") == 2 and m["ok"])
         until(ws, lambda m: m.get("type") == "data" and "sim_pt100:T1" in m["ch"])

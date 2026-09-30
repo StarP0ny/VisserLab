@@ -1,11 +1,12 @@
 """Консольный клиент сборщика: одна команда или поток сообщений.
 
-  ctl hello | discover | start | pause | resume | stop | cancel | mark
-  ctl prepare name=dry03 devices=pt100,syringe [template=sim] [note=текст]
+  ctl hello | discover | ports | start | pause | resume | stop | cancel | mark
+  ctl scan [devices=pt100] [port=COM27]      перебор; ctl scan_stop — остановить
+  ctl prepare name=dry03 devices=pt100,syringe [template=visser_patron] [note=текст]
   ctl note текст заметки
   ctl set pt100 period=2
   ctl action syringe add value=0,56
-  ctl history sim_pt100:T1 points=200
+  ctl history pt100:T1 points=200
   ctl watch [--data]
   ctl <команда> '{"json": "аргументы"}'
 """
@@ -16,7 +17,7 @@ import sys
 import yaml
 
 LIST_KEYS = {"devices"}
-TEXT_KEYS = {"name", "note", "text", "template"}
+TEXT_KEYS = {"name", "note", "text", "template", "port"}
 
 
 class NoCollector(Exception):

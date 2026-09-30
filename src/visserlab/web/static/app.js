@@ -56,6 +56,8 @@ const IC = {
   wide: '<path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3"/>',
   x: '<path d="M5 5l10 10M15 5L5 15"/>',
   search: '<circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/>',
+  refresh: '<path d="M16 10a6 6 0 1 1-1.8-4.3"/><path d="M16.5 3v4h-4"/>',
+  stop: '<rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/>',
 };
 const icon = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 20 20" aria-hidden="true">${IC[k] || IC.device}</svg>`;
 const KIND = {
@@ -76,6 +78,7 @@ const S = {
   up: null, why: 'web', port: 8765, off: 0, config: { preroll_s: 300 },
   state: 'idle', run: null, done: null, lastRun: null,
   inventory: [], templates: {}, found: {}, searching: false, lastSearch: null, runs: [],
+  scan: { run: false, ids: [], cur: null, frac: 0, text: '', done: {} }, ports: null,
   devices: {}, order: [], devStatus: {},
   alarms: { level: 'ok', items: [] }, events: [], last: {},
   series: {}, frames: {}, profHist: {},
@@ -139,7 +142,9 @@ function onMessage(m) {
     case 'event': onEvent(m.event); break;
     case 'device': onDevice(m.device); break;
     case 'device_status': S.devStatus[m.id] = { ...(S.devStatus[m.id] || {}), status: m.status, reason: m.reason }; break;
-    case 'found': S.found = m.found; if (S.screen === 'select') renderSelect(); break;
+    case 'found': S.found = m.found; if (S.screen === 'select') { keepName(); renderSelect(); } break;
+    case 'inventory': S.inventory = m.inventory; S.found = m.found; if (S.screen === 'select') { keepName(); renderSelect(); } else if (S.screen === 'settings') renderSettings(); break;
+    case 'scan': onScan(m.scan); break;
     case 'lag': hello(); break;
   }
 }
@@ -154,6 +159,7 @@ function applyHello(s) {
   S.config = s.config || S.config;
   S.inventory = s.inventory; S.templates = s.templates; S.lastRun = s.last_run;
   for (const i of s.inventory) if (i.found) S.found[i.id] = i.found;
+  if (s.scan) S.scan = s.scan;
   if (s.state === 'idle') {
     S.state = 'idle';
     if (S.done) { rerender(); return; }
@@ -302,7 +308,10 @@ function saveLayout() { if (S.layoutKey) store(S.layoutKey, JSON.stringify(S.pan
 function go(screen) {
   if (S.screen === 'exp' && screen !== 'exp' && S.done) leaveDone();
   S.screen = screen;
-  for (const s of ['home', 'select', 'settings', 'exp', 'analysis']) $('#s-' + s).hidden = s !== screen;
+  for (const s of ['home', 'select', 'settings', 'exp', 'analysis']) {
+    const el = $('#s-' + s); el.hidden = s !== screen;
+    if (s !== screen) el.innerHTML = '';        // иначе id полей формы двоятся с окном прибора
+  }
   closeCtx(); hideTip();
   rerender();
 }
@@ -372,13 +381,15 @@ function needsOf(inv) {
 function statusOf(inv) {
   if (inv.group === 'manual') return 'manual';
   if (inv.group === 'calc') return 'calc';
+  if (S.scan.run && S.scan.cur === inv.id) return 'scanning';
+  if (S.scan.run && S.scan.ids.includes(inv.id)) return 'queued';
   if (S.searching) return 'checking';
   const f = S.found[inv.id];
   return f ? (f.ok ? 'ok' : 'missing') : 'unknown';
 }
 function devAvailable(inv) {
   const st = statusOf(inv);
-  if (st === 'missing' || st === 'checking') return false;
+  if (['missing', 'checking', 'scanning', 'queued'].includes(st)) return false;
   return needsOf(inv).every(n => S.sel.has(n));
 }
 function connOf(inv) {
@@ -392,16 +403,20 @@ function connOf(inv) {
   if (s.addr != null) parts.push('адр. ' + s.addr);
   return parts.join(' · ');
 }
-function statusChip(st) {
+function statusChip(st, inv) {
+  const note = inv && (S.found[inv.id] || {}).note;
   return { checking: '<span class="chip chk"><span class="dot chk"></span>проверяю…</span>', ok: '<span class="chip ok"><span class="dot ok"></span>найден</span>',
-    missing: '<span class="chip err"><span class="dot err"></span>не найден</span>', unknown: '<span class="chip">не проверен</span>',
+    missing: `<span class="chip err"${note ? ` data-tip="${esc(note)}"` : ''}><span class="dot err"></span>не найден</span>`, unknown: '<span class="chip">не проверен</span>',
+    scanning: `<span class="chip chk"><span class="dot chk"></span>перебор <span class="num" data-scanpct>${Math.round(S.scan.frac * 100)}%</span></span>`,
+    queued: '<span class="chip">в очереди</span>',
     manual: '<span class="chip">ручной ввод</span>', calc: '<span class="chip">вычисляемый</span>' }[st] || '';
 }
 function renderSelect() {
   const inv = S.inventory;
   const selectable = inv.filter(i => i.group !== 'gateway');
   const hw = selectable.filter(i => !['manual', 'calc'].includes(i.group));
-  const ls = S.lastSearch ? `проверено в ${hhmmss(S.lastSearch)} · найдено ${hw.filter(i => statusOf(i) === 'ok').length} из ${hw.length}` : 'поиск не запускался';
+  const ls = S.lastSearch ? `проверено в ${hhmmss(S.lastSearch)} · найдено ${hw.filter(i => statusOf(i) === 'ok').length} из ${hw.length}` : 'не проверялись';
+  const lost = inv.filter(i => i.scan && !i.parent && statusOf(i) !== 'ok'), busy = S.searching || S.scan.run || !S.up;
   const groups = [{ title: 'Прямое подключение', items: inv.filter(i => i.group === 'direct') }];
   for (const g of inv.filter(i => i.group === 'gateway')) groups.push({ title: 'Через ' + g.name, gw: g, items: inv.filter(i => i.parent === g.id) });
   groups.push({ title: 'Ручные и вычисляемые', items: inv.filter(i => ['manual', 'calc'].includes(i.group)) });
@@ -410,7 +425,7 @@ function renderSelect() {
     const hidden = g.items.length - shown.length;
     let head = `<div class="grp-h"><span class="lbl">${esc(g.title)}</span>`;
     if (g.gw) { const st = statusOf(g.gw); head += st === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>шлюз на связи</span>' : statusChip(st); }
-    head += hidden ? `<span class="hid">скрыто: ${hidden}</span>` : '';
+    head += hidden ? `<button class="hid" data-act="showMissing" data-tip="Показать">скрыто: ${hidden}</button>` : '';
     head += '</div>';
     const items = shown.map(i => S.view === 'tiles' ? tileHTML(i) : rowHTML(i)).join('');
     return `<div class="grp">${head}${S.view === 'tiles' ? `<div class="tiles">${items}</div>` : `<div class="rows">${items}</div>`}</div>`;
@@ -423,8 +438,10 @@ function renderSelect() {
       <label class="field"><span class="lbl">Шаблон</span><select id="tplSel"><option value="">—</option>${Object.entries(S.templates).map(([k, t]) => `<option value="${esc(k)}"${k === S.template ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
     </div>
     <div class="toolbar">
-      <button class="btn primary" data-act="search" ${S.searching || !S.up ? 'disabled' : ''}>${icon('search')}${S.searching ? 'Проверяю…' : 'Найти приборы'}</button>
-      <span class="num" style="color:var(--muted);font-size:12.5px">${ls}</span>
+      <button class="btn" data-act="refresh" ${busy ? 'disabled' : ''} data-tip="Проверить на текущих настройках">${icon('refresh')}${S.searching ? 'Проверяю…' : 'Обновить'}</button>
+      ${S.scan.run ? `<button class="btn warn" data-act="scanStop">${icon('stop')}Стоп</button>`
+        : `<button class="btn" data-act="scanAll" ${busy || !lost.length ? 'disabled' : ''} data-tip="Перебор у ненайденных: ${esc([...new Set(lost.map(i => i.scan))].join('; ') || '—')}">${icon('search')}Поиск</button>`}
+      ${S.scan.run ? scanLine() : `<span class="num" style="color:var(--muted);font-size:12.5px">${ls}</span>`}
       <span class="sp"></span>
       <label class="sw"><input type="checkbox" id="showMissing" ${S.showMissing ? 'checked' : ''}><span></span>Показать недоступные</label>
       <div class="seg" role="group" aria-label="Вид"><button data-act="view" data-v="tiles" aria-pressed="${S.view === 'tiles'}">Плитки</button><button data-act="view" data-v="list" aria-pressed="${S.view === 'list'}">Список</button></div>
@@ -432,8 +449,50 @@ function renderSelect() {
     ${body}
     <div class="wiz-f"><span>Выбрано: <b class="num">${S.sel.size}</b></span><span class="sp"></span>
       <button class="btn" data-act="toSettings" ${S.sel.size ? '' : 'disabled'}>Настройки →</button>
-      <button class="btn primary" data-act="prepare" ${S.sel.size && S.up ? '' : 'disabled'}>Сразу в опыт →</button></div>
+      <button class="btn primary" data-act="prepare" ${S.sel.size && S.up && !S.scan.run ? '' : 'disabled'}>Сразу в опыт →</button></div>
   </div>`;
+}
+function scanPct() { const sc = S.scan, k = Math.max(0, sc.ids.indexOf(sc.cur)); return Math.round(100 * (k + (sc.cur ? sc.frac : 0)) / (sc.ids.length || 1)); }
+function scanText() { const sc = S.scan, d = sc.cur && invById(sc.cur); return (d ? d.name + ' · ' : '') + (sc.text || '…'); }
+function scanLine() {
+  const p = scanPct();
+  return `<span class="scan-p" id="scanP"><span class="bar" role="progressbar" aria-label="Перебор" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="width:${p}%"></i></span><span class="txt num">${esc(scanText())}</span></span>`;
+}
+function updateScan() {
+  const el = $('#scanP'); if (!el) return;
+  const p = scanPct();
+  el.querySelector('i').style.width = p + '%'; el.querySelector('.bar').setAttribute('aria-valuenow', p);
+  el.querySelector('.txt').textContent = scanText();
+  $$('[data-scanpct]').forEach(e => e.textContent = Math.round(S.scan.frac * 100) + '%');
+}
+function onScan(sc) {
+  const prev = S.scan; S.scan = sc;
+  for (const [id, r] of Object.entries(sc.done || {}))           // найденное перебором важнее черновика из ⚙
+    if (r.ok && !(prev.done || {})[id] && S.drafts[id]) for (const k of Object.keys(r.settings || {})) delete S.drafts[id][k];
+  if (prev.run && !sc.run) {
+    const res = Object.entries(sc.done || {});
+    if (res.length === 1) { const [id, r] = res[0], d = invById(id); toast(`${d ? d.name : id}: ${r.ok ? connOf(d) : r.note}`); }
+    else if (res.length) toast(`Найдено ${res.filter(([, r]) => r.ok).length} из ${res.length}`);
+  }
+  const redraw = prev.run !== sc.run || prev.cur !== sc.cur;
+  if (S.screen === 'select') { if (redraw) { keepName(); renderSelect(); } else updateScan(); }
+  else if (S.screen === 'settings' && redraw) renderSettings();
+}
+async function startScan(ids, port) {
+  const args = { settings: S.drafts, by: BY };
+  if (ids) args.devices = ids;
+  if (port) args.port = port;
+  await run('scan', args);
+}
+function loadPorts() { return request('ports').then(r => { S.ports = r; }).catch(() => {}); }
+function portOptions(cur) {
+  const list = (S.ports || []).slice();
+  if (cur && !list.some(p => p.port === cur)) list.unshift({ port: cur, desc: 'нет в системе', used: [] });
+  return list.map(p => `<option value="${esc(p.port)}"${p.port === cur ? ' selected' : ''}>${esc([p.port, p.desc, ...p.used].filter(Boolean).join(' · '))}</option>`).join('');
+}
+function scanBtn(i) {
+  if (statusOf(i) !== 'missing' || !i.scan || i.parent) return '';
+  return `<button class="btn sm" data-act="scanOne" data-dev="${esc(i.id)}" data-tip="Перебор: ${esc(i.scan)}"${S.scan.run || S.searching || !S.up ? ' disabled' : ''}>Перебор</button>`;
 }
 function whyOff(inv) {
   const st = statusOf(inv);
@@ -442,26 +501,27 @@ function whyOff(inv) {
   return miss.length ? 'нужен ' + miss.map(n => (invById(n) || {}).name || n).join(', ') : '';
 }
 function tileHTML(i) {
-  const on = S.sel.has(i.id), av = devAvailable(i), why = whyOff(i);
+  const on = S.sel.has(i.id), av = devAvailable(i), st = statusOf(i), why = st === 'missing' ? '' : whyOff(i);
   return `<div class="tile${av || on ? '' : ' off'}" role="button" tabindex="0" data-act="sel" data-dev="${esc(i.id)}" aria-pressed="${on}">
     <span class="ck">${on ? icon('check') : ''}</span><span class="ic">${icon(i.icon)}</span>
     <span class="nm">${esc(i.name)}</span><span class="md">${esc(i.model)}</span><span class="cn">${esc(connOf(i))}</span>
-    <span class="row">${statusChip(statusOf(i))}${why ? `<span class="md">${esc(why)}</span>` : ''}<button class="icon-btn" data-act="gear" data-dev="${esc(i.id)}" data-tip="Настройки" aria-label="Настройки ${esc(i.name)}">⚙</button></span>
+    <span class="row">${statusChip(st, i)}${why ? `<span class="md">${esc(why)}</span>` : ''}<span class="sp"></span>${scanBtn(i)}<button class="icon-btn" data-act="gear" data-dev="${esc(i.id)}" data-tip="Настройки" aria-label="Настройки ${esc(i.name)}">⚙</button></span>
   </div>`;
 }
 function rowHTML(i) {
   const on = S.sel.has(i.id), av = devAvailable(i);
   return `<div class="rowi${av || on ? '' : ' off'}" role="button" tabindex="0" data-act="sel" data-dev="${esc(i.id)}" aria-pressed="${on}">
-    <span class="ck2">${on ? icon('check') : ''}</span>${icon(i.icon)}<b>${esc(i.name)}</b><span class="md">${esc(i.model)}</span><span class="cn">${esc(connOf(i))}</span>${statusChip(statusOf(i))}
+    <span class="ck2">${on ? icon('check') : ''}</span>${icon(i.icon)}<b>${esc(i.name)}</b><span class="md">${esc(i.model)}</span><span class="cn">${esc(connOf(i))}</span>${statusChip(statusOf(i), i)}<span>${scanBtn(i)}</span>
     <button class="icon-btn" data-act="gear" data-dev="${esc(i.id)}" data-tip="Настройки" aria-label="Настройки ${esc(i.name)}">⚙</button></div>`;
 }
-async function runSearch() {
-  if (S.searching) return;
-  S.searching = true; renderSelect();
-  const res = await request('discover').catch(e => { toast(e.message); return null; });
+async function runRefresh() {
+  if (S.searching || S.scan.run) return;
+  S.searching = true; keepName(); renderSelect();
+  loadPorts();
+  const res = await request('discover', { settings: S.drafts }).catch(e => { toast(e.message); return null; });
   S.searching = false;
   if (res) { S.found = res; S.lastSearch = nowS(); for (const id of [...S.sel]) { const i = invById(id); if (i && !devAvailable(i)) S.sel.delete(id); } }
-  if (S.screen === 'select') renderSelect();
+  if (S.screen === 'select') { keepName(); renderSelect(); }
 }
 function keepName() { const el = $('#runNameNew'); if (el) S.draftName = el.value; }
 
@@ -482,7 +542,7 @@ function renderSettings() {
         <div class="form" id="cfgForm" data-dev="${esc(d.id)}">${formHTML(d.id, d.schema, vals, false, false)}</div>
       </div>
     </div>
-    <div class="wiz-f"><button class="btn" data-act="toSelect">← Приборы</button><span class="sp"></span><button class="btn primary" data-act="prepare" ${S.up ? '' : 'disabled'}>В опыт →</button></div>
+    <div class="wiz-f"><button class="btn" data-act="toSelect">← Приборы</button><span class="sp"></span><button class="btn primary" data-act="prepare" ${S.up && !S.scan.run ? '' : 'disabled'}>В опыт →</button></div>
   </div>`;
 }
 
@@ -495,6 +555,7 @@ function formHTML(devId, schema, vals, lockNonLive, actionsOn) {
     const dis = locked || (f.type === 'action' && !actionsOn) ? ' disabled' : '';
     let ctl = '';
     if (f.type === 'select') ctl = `<select id="${id}" data-k="${f.key}"${dis}>${f.options.map(([ov, ol]) => `<option value="${esc(ov)}"${String(ov) === String(v) ? ' selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
+    else if (f.type === 'port' && S.ports) ctl = `<select id="${id}" data-k="${f.key}"${dis}>${portOptions(String(v ?? ''))}</select>`;
     else if (f.type === 'number') ctl = `<input id="${id}" data-k="${f.key}" type="number" inputmode="decimal"${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''}${f.step != null ? ` step="${f.step}"` : ''} value="${esc(v)}"${dis}>`;
     else if (f.type === 'toggle') ctl = `<label class="sw"><input id="${id}" data-k="${f.key}" type="checkbox"${v ? ' checked' : ''}${dis}><span></span></label>`;
     else if (f.type === 'action') ctl = `<button type="button" id="${id}" class="btn sm" data-act="devAction" data-dev="${esc(devId)}" data-k="${f.key}"${dis}>${esc(f.label)}</button>`;
@@ -993,6 +1054,30 @@ function openDevWin(devId, tab) {
   const canAdd = live && (d.actions || []).includes('add');
   M = { id: devId, live, tab: tab || (canAdd ? 'input' : 'set'), draft: { ...(live ? d.settings : { ...d.settings, ...(S.drafts[devId] || {}) }) } };
   renderModal(); $('#modal').hidden = false;
+  if (!S.ports) loadPorts().then(() => { if (M && M.tab === 'set' && S.ports) { M.draft = { ...M.draft, ...readForm($('#mForm')) }; renderModal(); } });
+}
+
+/* ---------- окно перебора: выбрать порт и начать ---------- */
+let SW = null;
+function openScanWin(id) {
+  const d = invById(id); if (!d) return;
+  const pf = (d.schema || []).find(f => f.type === 'port');
+  if (!pf) { startScan([id]); return; }
+  M = null; SW = { id, port: String({ ...d.settings, ...(S.drafts[id] || {}) }[pf.key] ?? '') };
+  renderScanWin(); $('#modal').hidden = false;
+  loadPorts().then(() => { if (SW) { SW.port = $('#scanPort').value; renderScanWin(); } });
+}
+function renderScanWin() {
+  const d = invById(SW.id); if (!d) { closeModal(); return; }
+  $('#modal').innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Перебор: ${esc(d.name)}">
+    <div class="m-h"><span class="ic">${icon('search')}</span><h3>Перебор · ${esc(d.name)}</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>${esc(d.model)}</span><span class="mono">${esc(connOf(d))}</span></div></div>
+    <div class="m-b"><div class="form">
+      <div class="f-row"><label class="f-l" for="scanPort">Порт</label><div class="f-c"><select id="scanPort">${portOptions(SW.port)}</select></div></div>
+      <div class="f-row"><span class="f-l">Перебираем</span><span class="f-info">${esc(d.scan)}</span></div>
+    </div></div>
+    <div class="m-f"><span class="sp"></span><button class="btn" data-act="mClose">Отмена</button><button class="btn primary" data-act="scanGo">Начать</button></div>
+  </div>`;
 }
 function devOf(M) { return M.live ? S.devices[M.id] : invById(M.id); }
 function renderModal() {
@@ -1016,7 +1101,7 @@ function renderModal() {
   </div>`;
   if (M.tab === 'input') setTimeout(() => { const el = $('#mVal'); if (el) el.focus(); }, 0);
 }
-function closeModal() { $('#modal').hidden = true; M = null; }
+function closeModal() { $('#modal').hidden = true; M = null; SW = null; }
 async function applyModal() {
   const d = devOf(M);
   M.draft = { ...M.draft, ...readForm($('#mForm')) };
@@ -1083,13 +1168,22 @@ const ACT = {
   home: () => { closeModal(); go('home'); },
   toExp: () => go('exp'),
   cancelPrep: () => run('cancel', { by: BY }),
-  new: () => { S.sel = new Set(); S.drafts = {}; S.template = ''; S.draftName = `опыт_${hhmmss(nowS()).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runSearch(); },
+  new: () => { S.sel = new Set(); S.drafts = {}; S.template = ''; S.draftName = `опыт_${hhmmss(nowS()).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runRefresh(); else loadPorts(); },
   analysis: () => { closeModal(); go('analysis'); loadRuns(); },
-  search: runSearch,
+  refresh: runRefresh,
+  scanAll: () => { keepName(); startScan(null); },
+  scanOne: (b, e) => { e.stopPropagation(); keepName(); openScanWin(b.dataset.dev); },
+  scanGo: () => { const id = SW.id, port = $('#scanPort').value; closeModal(); startScan([id], port); },
+  scanStop: () => run('scan_stop'),
+  showMissing: () => { keepName(); S.showMissing = true; renderSelect(); },
   view: b => { keepName(); S.view = b.dataset.v; renderSelect(); },
   sel: b => {
     const i = invById(b.dataset.dev);
-    if (!S.sel.has(i.id) && !devAvailable(i)) { toast(statusOf(i) === 'missing' ? `${i.name} не найден. Параметры подключения — в ⚙` : `${i.name}: ${whyOff(i)}`); return; }
+    if (!S.sel.has(i.id) && !devAvailable(i)) {
+      const st = statusOf(i);
+      toast(st === 'missing' ? `${i.name} не найден. ${i.scan ? 'Перебор или ⚙' : 'Параметры — в ⚙'}` : st === 'scanning' || st === 'queued' ? `${i.name}: идёт перебор` : st === 'checking' ? `${i.name}: проверяю…` : `${i.name}: ${whyOff(i)}`);
+      return;
+    }
     S.sel.has(i.id) ? S.sel.delete(i.id) : S.sel.add(i.id);
     for (const x of S.inventory) if (S.sel.has(x.id) && needsOf(x).some(n => !S.sel.has(n))) S.sel.delete(x.id);
     keepName(); renderSelect();

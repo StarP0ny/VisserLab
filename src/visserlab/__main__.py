@@ -3,7 +3,7 @@
   python -m visserlab collect                    сборщик: держит приборы, пишет опыты, ждёт клиентов
   python -m visserlab web [--host 0.0.0.0]       веб-интерфейс (к уже запущенному сборщику)
   python -m visserlab ctl <команда> [аргументы]  управление запущенным сборщиком (ctl без команды — справка)
-  python -m visserlab record [--template sim]    запись из консоли, без сборщика и веба
+  python -m visserlab record [--template ID]     запись из консоли, без сборщика и веба
   python -m visserlab devices                    приборы из конфига и проверка, отвечают ли
   python -m visserlab probe scan|dump            разведка Modbus-шины
 """

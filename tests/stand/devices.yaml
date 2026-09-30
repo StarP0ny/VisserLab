@@ -1,0 +1,42 @@
+# Стенд из симуляторов: тесты и работа над интерфейсом без железа.
+#   python -m visserlab --config tests/stand collect
+# Опыты пишутся в runs/sim, найденное перебором — в tests/stand/local.yaml (не в git).
+
+plugins: [sims.py]        # драйверы-симуляторы, в основной пакет не входят
+
+collector:
+  port: 8765
+  runs_dir: runs/sim
+  preroll_s: 300
+  preroll_fps: 1
+  record_default: [sim_pt100]
+
+devices:
+  sim_pt100:
+    driver: sim_pt100
+    channels:
+      T1: ch1 корпус, вход
+      T2: ch2 корпус, середина
+      T3: ch3 корпус, выход
+      T8: ch8 среда
+  sim_rtu:                # на шине сидит по другому адресу и скорости: находится перебором
+    driver: sim_rtu
+    settings: {port: SIM1, baud: "9600", addr: 1}
+  sim_thermal:
+    driver: sim_thermal
+  sim_mk:
+    driver: sim_mk
+    name: МК-1 (сим)
+    children:
+      sim_scd41: {driver: sim_scd41, name: "SCD41 #1 (сим)"}
+      sim_sht1: {driver: sim_sht45, name: "SHT45 #1 (сим)", settings: {place: inlet}}
+      sim_sht2: {driver: sim_sht45, name: "SHT45 #2 (сим)", sim_absent: true}
+      sim_sdp: {driver: sim_sdp810, name: "SDP810 (сим)"}
+  syringe:
+    driver: manual
+    name: Шприц-проба
+    settings: {channel: CO₂, unit: "%", dp: 2}
+  sim_ah:
+    driver: abs_humidity
+    name: Абс. влажность (сим)
+    settings: {rh: "sim_sht1:rh", t: "sim_sht1:t"}
