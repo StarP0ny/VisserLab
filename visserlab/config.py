@@ -40,6 +40,7 @@ class Config:
     record_default: list = field(default_factory=list)
     local: dict = field(default_factory=dict)       # id -> {настройка: значение} из local.yaml
     local_path: Path | None = None                  # куда сохранять найденное перебором
+    dir: Path | None = None                         # папка конфига: правка стенда из интерфейса
 
 
 def load(config_dir=None, local_on=True) -> Config:
@@ -85,7 +86,7 @@ def load(config_dir=None, local_on=True) -> Config:
         preroll_fps=float(col.get("preroll_fps", 1)), push_hz=float(col.get("push_hz", 10)),
         frame_push_fps=float(col.get("frame_push_fps", 2)),
         record_default=[str(x) for x in col.get("record_default") or []],
-        local=local, local_path=d / LOCAL)
+        local=local, local_path=d / LOCAL, dir=d)
 
 
 def save_local(cfg: Config, dev_id, changes):
@@ -100,6 +101,18 @@ def save_local(cfg: Config, dev_id, changes):
     tmp = cfg.local_path.with_suffix(".tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, cfg.local_path)
+
+
+def drop_local(cfg: Config, dev_ids):
+    """Прибор удалён из стенда: найденное перебором для него больше не нужно."""
+    if not any(i in cfg.local for i in dev_ids):
+        return
+    for i in dev_ids:
+        cfg.local.pop(i, None)
+    if cfg.local_path is not None:
+        text = LOCAL_HEAD + yaml.safe_dump({"devices": cfg.local}, allow_unicode=True, sort_keys=True,
+                                           default_flow_style=None)
+        cfg.local_path.write_text(text, encoding="utf-8")
 
 
 def web_token(cfg: Config, new=False):

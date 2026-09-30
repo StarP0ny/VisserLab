@@ -65,6 +65,8 @@ const IC = {
   popout: '<path d="M11.5 3H17v5.5M17 3l-7 7"/><path d="M15 11.5V17H3V5h5.5"/>',
   popin: '<path d="M3 5.5V3h14v14h-2.5"/><rect x="3" y="9" width="8" height="8" rx="1"/>',
   tall: '<path d="M10 3v14M7 6l3-3 3 3M7 14l3 3 3-3"/>',
+  save: '<path d="M4 3.5h9.5L16.5 6.5v10h-12.5z"/><path d="M7 3.5v4h6v-4M7 16.5v-5h6v5"/>',
+  plus: '<path d="M10 4v12M4 10h12"/>',
   stop: '<rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/>',
 };
 const icon = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 20 20" aria-hidden="true">${IC[k] || IC.device}</svg>`;
@@ -153,6 +155,7 @@ function onMessage(m) {
     case 'found': S.found = m.found; if (S.screen === 'select') { keepName(); renderSelect(); } break;
     case 'inventory': S.inventory = m.inventory; S.found = m.found; if (S.screen === 'select') { keepName(); renderSelect(); } else if (S.screen === 'settings') renderSettings(); break;
     case 'scan': onScan(m.scan); break;
+    case 'templates': S.templates = m.templates; if (S.screen === 'home') renderHome(); else if (S.screen === 'select') { keepName(); renderSelect(); } break;
     case 'lag': hello(); break;
   }
 }
@@ -179,7 +182,7 @@ function applyHello(s) {
   S.done = null;
   S.state = s.state;
   const ss = s.session;
-  S.run = { name: ss.name, note: ss.note, t0: ss.t0, pauses: ss.pauses, prepared: ss.prepared, preroll: ss.t0 != null ? ss.preroll : null, dir: ss.dir };
+  S.run = { name: ss.name, note: ss.note, t0: ss.t0, pauses: ss.pauses, prepared: ss.prepared, preroll: ss.t0 != null ? ss.preroll : null, dir: ss.dir, template: ss.template };
   setDevices(s.devices);
   S.alarms = s.alarms; S.events = s.events.slice(); S.last = { ...s.last };
   S.series = {}; S.frames = {}; S.profHist = {};
@@ -312,8 +315,14 @@ function loadLayout() {
   if (Array.isArray(saved)) {
     S.panels = saved.map(p => ({ ...p, series: p.series.filter(id => CH[id]) })).filter(p => p.series.length);
     pSeq = Math.max(0, ...S.panels.map(p => +String(p.id).slice(1) || 0));
-  } else S.panels = defaultLayout();
+  } else S.panels = templateLayout() || defaultLayout();
   if (POP) S.panels = S.panels.filter(p => p.id === POP);
+}
+function templateLayout() {                 // опыт по шаблону с раскладкой — она, а не автоматическая
+  const t = S.run && S.run.template && S.templates[S.run.template];
+  if (!t || !t.layout || !t.layout.length) return null;
+  const out = t.layout.map(p => (p.series || []).filter(id => CH[id])).map((ser, i) => ser.length ? { ...mkPanel(ser, t.layout[i].w || 1), h: t.layout[i].h || 1 } : null).filter(Boolean);
+  return out.length ? out : null;
 }
 function saveLayout() { if (S.layoutKey && !POP) store(S.layoutKey, JSON.stringify(S.panels, (k, v) => k === 'alive' ? undefined : v)); }
 
@@ -454,7 +463,7 @@ function devAvailable(inv) {
 function connOf(inv) {
   const s = inv.settings || {};
   if (inv.parent) return 'через ' + ((invById(inv.parent) || {}).name || inv.parent);
-  if (inv.group === 'manual') return 'ручной ввод';
+  if (inv.group === 'manual') return '';                 // «ручной ввод» уже в модели
   if (inv.group === 'calc') return 'из ' + needsOf(inv).map(n => (invById(n) || {}).name || n).join(', ');
   const parts = [];
   if (s.port) parts.push(s.port);
@@ -468,7 +477,7 @@ function statusChip(st, inv) {
     missing: `<span class="chip err"${note ? ` data-tip="${esc(note)}"` : ''}><span class="dot err"></span>не найден</span>`, unknown: '<span class="chip">не проверен</span>',
     scanning: `<span class="chip chk"><span class="dot chk"></span>перебор <span class="num" data-scanpct>${Math.round(S.scan.frac * 100)}%</span></span>`,
     queued: '<span class="chip">в очереди</span>',
-    manual: '<span class="chip">ручной ввод</span>', calc: '<span class="chip">вычисляемый</span>' }[st] || '';
+    manual: '', calc: '' }[st] || '';                     // у ручных и вычисляемых статус не нужен: модель говорит сама
 }
 function renderSelect() {
   const inv = S.inventory;
@@ -500,6 +509,7 @@ function renderSelect() {
       <button class="btn" data-act="refresh" ${busy ? 'disabled' : ''} data-tip="Проверить на текущих настройках">${icon('refresh')}${S.searching ? 'Проверяю…' : 'Обновить'}</button>
       ${S.scan.run ? `<button class="btn warn" data-act="scanStop">${icon('stop')}Стоп</button>`
         : `<button class="btn" data-act="scanAll" ${busy || !lost.length ? 'disabled' : ''} data-tip="Перебор у ненайденных: ${esc([...new Set(lost.map(i => i.scan))].join('; ') || '—')}">${icon('search')}Поиск</button>`}
+      <button class="btn" data-act="devNew" ${busy ? 'disabled' : ''} data-tip="Добавить прибор в стенд">${icon('plus')}Прибор</button>
       ${S.scan.run ? scanLine() : `<span class="num" style="color:var(--muted);font-size:12.5px">${ls}</span>`}
       <span class="sp"></span>
       <label class="sw"><input type="checkbox" id="showMissing" ${S.showMissing ? 'checked' : ''}><span></span>Показать недоступные</label>
@@ -657,6 +667,7 @@ function renderExp() {
       <span class="state" id="statePill"></span>
       <div class="clock num" id="clock" data-tip="От старта записи"></div>
       <span id="statBox"></span>
+      <button class="icon-btn" data-act="tplSave" data-tip="Сохранить как шаблон" aria-label="Сохранить как шаблон">${icon('save')}</button>
       ${THIS_PC ? `<button class="icon-btn" data-act="phone" data-tip="Телефон: QR" aria-label="Телефон">${icon('phone')}</button>` : ''}
       <div class="ctrl" id="ctrl"></div>
     </header>
@@ -1180,24 +1191,84 @@ function renderModal() {
   const d = devOf(M); if (!d) { closeModal(); return; }
   const lock = M.live && S.state === 'rec';
   const canAdd = M.live && (d.actions || []).includes('add');
-  const tabs = [['set', 'Настройки'], ...(d.channels ? [['ch', 'Каналы']] : []), ...(M.live ? [['diag', 'Диагностика']] : []), ...(canAdd ? [['input', 'Ввод отсчёта']] : [])];
+  const tabs = [['set', 'Настройки'], ...(M.live && d.channels ? [['ch', 'Каналы']] : []), ...(M.live ? [['diag', 'Диагностика']] : [['stand', 'Прибор']]), ...(canAdd ? [['input', 'Ввод отсчёта']] : [])];
   const stt = (S.devStatus[M.id] || {}).status;
   const status = !M.live ? statusChip(statusOf(d)) : stt === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>на связи</span>' : stt === 'lost' ? `<span class="chip err"><span class="dot err"></span>нет связи</span>` : stt === 'stale' ? '<span class="chip err"><span class="dot warn"></span>нет данных</span>' : '';
   let body = '';
   if (M.tab === 'set') body = `<div class="form" id="mForm">${formHTML(M.id, d.schema, M.draft, lock, M.live)}</div>${lock && d.schema.some(f => f.type !== 'info' && f.type !== 'action' && !f.live) ? '<p class="lockline">Идёт запись: поля с замком меняются на паузе.</p>' : ''}`;
   else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${d.channels.map(c => `<tr><td>${esc(c.name)}</td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${c.rate ? (c.rate >= 1 ? fmtV(c.rate, c.rate % 1 ? 1 : 0) + ' Гц' : 'раз в ' + fmtV(1 / c.rate, 0) + ' с') : c.kind === 'points' ? 'вручную' : 'по входам'}</td></tr>`).join('')}</tbody></table>`;
   else if (M.tab === 'diag') { const ds = S.devStatus[M.id] || {}; body = `<dl class="kv"><dt>Статус</dt><dd>${esc({ ok: 'на связи', lost: 'нет связи', stale: 'нет данных', wait: 'ждём данных' }[ds.status] || ds.status || '—')}</dd>${ds.reason ? `<dt>Причина</dt><dd>${esc(ds.reason)}</dd>` : ''}<dt>Последний отсчёт</dt><dd class="num">${ds.age != null ? fmtV(ds.age, 1) + ' с назад' : '—'}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd></dl>${['direct', 'gateway', 'child'].includes(d.group) ? '<p><button class="btn sm" data-act="reconnect">Переподключить</button></p>' : ''}`; }
+  else if (M.tab === 'stand') {
+    const labs = (d.channels || []).filter(c => c.kind === 'scalar' || c.kind === 'points');
+    body = `<div class="form" id="stForm">
+      <div class="f-row"><label class="f-l" for="stName">Имя</label><div class="f-c"><input type="text" id="stName" value="${esc(M.stName ?? d.name)}"></div></div>
+      <div class="f-row"><span class="f-l">Идентификатор<span class="ii" tabindex="0" data-tip="Имя файлов в папке опыта. Не меняется." aria-label="Идентификатор">i</span></span><span class="f-info mono">${esc(d.id)}</span></div>
+      ${labs.length ? '<div class="f-sub lbl">Подписи каналов</div>' + labs.map(c => `<div class="f-row"><label class="f-l mono" for="lab-${esc(c.key)}">${esc(c.key)}</label><div class="f-c"><input type="text" id="lab-${esc(c.key)}" data-lab="${esc(c.key)}" value="${c.name !== c.default ? esc(c.name) : ''}" placeholder="${esc(c.default)}"></div></div>`).join('') : ''}
+    </div>`;
+  }
   else if (M.tab === 'input') { const c = d.channels[0]; body = `<div class="form"><div class="f-row"><label class="f-l" for="mVal">${esc(c.name)}</label><div class="f-c"><input type="number" id="mVal" step="any" inputmode="decimal"><span class="unit">${esc(c.unit)}</span><button class="btn sm primary" data-act="manualAdd">Записать</button></div></div></div>`; }
   $('#modal').innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(d.name)}">
     <div class="m-h"><span class="ic">${icon(d.icon)}</span><h3>${esc(d.name)}</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
       <div class="sub"><span>${esc(d.model)}</span>${M.live ? '' : `<span class="mono">${esc(connOf(d))}</span>`}${status}</div></div>
     <div class="m-tabs" role="tablist">${tabs.map(([v, l]) => `<button role="tab" data-act="mTab" data-v="${v}" aria-selected="${M.tab === v}">${l}</button>`).join('')}</div>
     <div class="m-b">${body}</div>
-    <div class="m-f">${M.tab === 'set' ? `<button class="btn ghost" data-act="mReset">По умолчанию</button>` : ''}<span class="sp"></span><button class="btn" data-act="mClose">Закрыть</button>${M.tab === 'set' ? '<button class="btn primary" data-act="mApply">Применить</button>' : ''}</div>
+    <div class="m-f">${M.tab === 'set' ? `<button class="btn ghost" data-act="mReset">По умолчанию</button>` : ''}${M.tab === 'stand' ? (M.del ? `<span class="warn-q">Удалить из стенда${S.inventory.some(i => i.parent === M.id) ? ' вместе с приборами за ним' : ''}?</span><button class="btn rec" data-act="stDelYes">Удалить</button><button class="btn" data-act="stDelNo">Нет</button>` : '<button class="btn ghost danger" data-act="stDel">Удалить из стенда</button>') : ''}<span class="sp"></span><button class="btn" data-act="mClose">Закрыть</button>${M.tab === 'set' ? '<button class="btn primary" data-act="mApply">Применить</button>' : ''}${M.tab === 'stand' && !M.del ? '<button class="btn primary" data-act="stSave">Сохранить</button>' : ''}</div>
   </div>`;
   if (M.tab === 'input') setTimeout(() => { const el = $('#mVal'); if (el) el.focus(); }, 0);
 }
-function closeModal() { $('#modal').hidden = true; M = null; SW = null; PH = null; }
+function closeModal() { $('#modal').hidden = true; M = null; SW = null; PH = null; ND = null; TS = null; }
+
+/* ---------- новый прибор ---------- */
+let ND = null;
+async function openNewDev() {
+  const drivers = await run('drivers'); if (!drivers) return;
+  closeModal(); ND = { drivers, driver: null };
+  renderNewDev(); $('#modal').hidden = false;
+}
+function freeId(base) { const has = id => S.inventory.some(i => i.id === id); let n = 1; while (has(n === 1 ? base : `${base}_${n}`)) n++; return n === 1 ? base : `${base}_${n}`; }
+function renderNewDev() {
+  const d = ND.drivers.find(x => x.driver === ND.driver);
+  const body = !d
+    ? `<div class="drvs">${ND.drivers.map(x => `<button class="drv" data-act="ndPick" data-v="${esc(x.driver)}">${icon(x.icon)}<span><b>${esc(x.title)}</b><small>${esc(x.model)}</small></span></button>`).join('')}</div>`
+    : `<div class="drv-sel">${icon(d.icon)}<span><b>${esc(d.title)}</b> <small>${esc(d.model)}</small></span><button class="lnk" data-act="ndPick" data-v="">другой</button></div>
+      <div class="form" id="ndForm">
+        <div class="f-row"><label class="f-l" for="ndName">Имя</label><div class="f-c"><input type="text" id="ndName" value="${esc(d.title)}"></div></div>
+        <div class="f-row"><label class="f-l" for="ndId">Идентификатор<span class="ii" tabindex="0" data-tip="Имя файлов в папке опыта: латиница, цифры, _" aria-label="Идентификатор">i</span></label><div class="f-c"><input type="text" id="ndId" class="mono" value="${esc(freeId(d.driver))}"></div></div>
+        ${formHTML('nd', d.schema, d.defaults, false, false)}
+      </div>`;
+  $('#modal').innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Новый прибор">
+    <div class="m-h"><span class="ic">${icon('plus')}</span><h3>Новый прибор</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>${d ? 'Подписи каналов — потом, в окне прибора' : 'Тип прибора'}</span></div></div>
+    <div class="m-b">${body}</div>
+    <div class="m-f"><span class="sp"></span><button class="btn" data-act="mClose">Отмена</button>${d ? '<button class="btn primary" data-act="ndAdd">Добавить</button>' : ''}</div>
+  </div>`;
+}
+
+/* ---------- сохранить опыт как шаблон ---------- */
+let TS = null;
+function openTplSave() {
+  closeModal();
+  TS = { name: (S.run.template && S.templates[S.run.template] ? S.templates[S.run.template].name : S.run.name), exists: null };
+  renderTplSave(); $('#modal').hidden = false;
+}
+function renderTplSave() {
+  $('#modal').innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Сохранить как шаблон">
+    <div class="m-h"><span class="ic">${icon('save')}</span><h3>Шаблон опыта</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>Приборы, их настройки, оповещения и раскладка</span></div></div>
+    <div class="m-b"><div class="form"><div class="f-row"><label class="f-l" for="tsName">Имя</label><div class="f-c"><input type="text" id="tsName" value="${esc(TS.name)}"></div></div></div></div>
+    <div class="m-f">${TS.exists ? `<span class="warn-q">«${esc(TS.exists)}» уже есть</span><span class="sp"></span><button class="btn" data-act="mClose">Отмена</button><button class="btn rec" data-act="tsOverwrite">Перезаписать</button>`
+      : '<span class="sp"></span><button class="btn" data-act="mClose">Отмена</button><button class="btn primary" data-act="tsSave">Сохранить</button>'}</div>
+  </div>`;
+}
+async function saveTemplate(overwrite) {
+  TS.name = $('#tsName').value.trim();
+  if (!TS.name) { toast('Нужно имя'); return; }
+  const layout = S.panels.map(p => ({ series: p.series.filter(id => !(CH[id].at && CH[id].at.length === 3)), w: p.w || 1, h: p.h || 1 })).filter(p => p.series.length);
+  const r = await run('template_save', { name: TS.name, layout, overwrite, by: BY });
+  if (!r) return;
+  if (r.exists) { TS.exists = TS.name; renderTplSave(); return; }
+  closeModal(); toast(`Шаблон «${TS.name}» сохранён`);
+}
 
 /* ---------- телефон: QR ссылки с токеном ---------- */
 let PH = null;
@@ -1293,6 +1364,26 @@ const ACT = {
   new: () => { S.sel = new Set(); S.drafts = {}; S.template = ''; S.draftName = `опыт_${hhmmss(nowS()).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runRefresh(); else loadPorts(); },
   analysis: () => { closeModal(); go('analysis'); loadRuns(); },
   refresh: runRefresh,
+  devNew: () => { keepName(); openNewDev(); },
+  ndPick: b => { ND.driver = b.dataset.v || null; renderNewDev(); },
+  ndAdd: async () => {
+    const d = ND.drivers.find(x => x.driver === ND.driver);
+    const name = $('#ndName').value.trim() || d.title;
+    const r = await run('device_add', { driver: d.driver, name, id: $('#ndId').value.trim(), settings: readForm($('#ndForm')), by: BY });
+    if (!r) return;
+    closeModal(); toast(`Добавлен: ${name}`); S.showMissing = true; runRefresh();
+  },
+  stDel: () => { M.stName = $('#stName').value; M.del = true; renderModal(); },
+  stDelNo: () => { M.del = false; renderModal(); },
+  stDelYes: async () => { const id = M.id, r = await run('device_del', { id, by: BY }); if (r) { closeModal(); r.deleted.forEach(x => S.sel.delete(x)); toast(`Удалено из стенда: ${r.deleted.join(', ')}`); } },
+  stSave: async () => {
+    const labels = {}; $$('[data-lab]').forEach(i => { labels[i.dataset.lab] = i.value.trim(); });
+    const r = await run('device_edit', { id: M.id, name: $('#stName').value, channels: labels, by: BY });
+    if (r) { closeModal(); toast('Сохранено в стенде'); }
+  },
+  tplSave: () => openTplSave(),
+  tsSave: () => saveTemplate(false),
+  tsOverwrite: () => saveTemplate(true),
   phone: () => openPhone(),
   phoneIp: b => { PH.i = +b.dataset.i; renderPhone(); },
   phoneCopy: () => { const u = PH.data.links[PH.i].url; navigator.clipboard.writeText(u).then(() => toast('Ссылка скопирована'), () => toast(u)); },
@@ -1341,7 +1432,7 @@ const ACT = {
   roiDel: b => { closeCtx(); run('action', { device: b.dataset.dev, name: 'roi_del', args: { key: b.dataset.key }, by: BY }); },
   roiClear: b => { closeCtx(); run('action', { device: b.dataset.dev, name: 'roi_clear', by: BY }); },
   mClose: closeModal, mApply: applyModal,
-  mTab: b => { if (M.tab === 'set') M.draft = { ...M.draft, ...readForm($('#mForm')) }; M.tab = b.dataset.v; renderModal(); },
+  mTab: b => { if (M.tab === 'set') M.draft = { ...M.draft, ...readForm($('#mForm')) }; if (M.tab === 'stand') M.stName = $('#stName').value; M.tab = b.dataset.v; M.del = false; renderModal(); },
   mReset: () => { M.draft = { ...M.draft, ...defaultsOf(devOf(M).schema) }; renderModal(); },
   devAction: b => run('action', { device: b.dataset.dev, name: b.dataset.k, by: BY }),
   reconnect: () => { run('action', { device: M.id, name: 'reconnect', by: BY }); closeModal(); },

@@ -21,7 +21,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from ..config import code_version, save_local
+from .. import stand
+from ..config import code_version, drop_local, save_local
 from .alarms import Alarms, RuleError
 from .buffers import History, Ring
 from .driver import ARRAY_KINDS, KINDS, REGISTRY, DriverError, Found
@@ -32,6 +33,7 @@ STATE_RU = {IDLE: "нет опыта", PREP: "подготовка", REC: "за�
 RETRY_S = 2.0          # пауза перед повторным открытием отвалившегося прибора
 WAIT_GRACE_S = 5.0     # сколько ждать первых данных после открытия
 SCAN_PUSH_S = 0.1      # прогресс перебора клиентам, не чаще
+ADDABLE = ("direct", "gateway", "manual", "calc")   # что добавляется из интерфейса (дети — через шлюз)
 
 
 class CollectorError(Exception):
@@ -123,6 +125,7 @@ class Collector:
         self._thread, self._alive = None, False
         self.found = {}
         self.last_run = None
+        self._last_template = None     # шаблон только что остановленного опыта
         self.scan = {"run": False, "ids": [], "cur": None, "frac": 0.0, "text": "", "done": {}}
         self._scan_stop, self._scan_thread = threading.Event(), None
         self._probing = threading.Lock()        # «Обновить» и перебор не открывают порты одновременно
@@ -228,14 +231,13 @@ class Collector:
                        "runs_dir": str(self.cfg.runs_dir)},
             "session": None if s is None else {
                 "name": s["name"], "note": s["note"], "t0": self.t0, "pauses": s["pauses"],
-                "prepared": s["prepared"], "preroll": s["preroll"],
+                "prepared": s["prepared"], "preroll": s["preroll"], "template": s.get("template"),
                 "dir": str(self.storage.dir) if self.storage else None,
                 "alarms": s["rules"]},
             "last_run": self.last_run,
             "devices": [d.info() for d in self.devices.values()],
             "inventory": self._inventory(),
-            "templates": {k: {"name": v.get("name", k), "devices": v.get("devices", [])}
-                          for k, v in self.cfg.templates.items()},
+            "templates": self._templates(),
             "alarms": self.alarms.state(),
             "events": list(s["events"]) if s else [],
             "last": self._last_scalars(),
@@ -253,8 +255,20 @@ class Collector:
             except DriverError:
                 values = {**cls.defaults(), **(inv.get("settings") or {})}
             out.append({**d, "id": i, "name": inv.get("name") or cls.title, "parent": inv.get("parent"),
-                        "settings": values, "found": self.found.get(i), "local": self.cfg.local.get(i)})
+                        "settings": values, "found": self.found.get(i), "local": self.cfg.local.get(i),
+                        "channels": self._channels_of(i, inv, cls, values)})
         return out
+
+    @staticmethod
+    def _channels_of(dev_id, inv, cls, values):
+        """Каналы прибора при его настройках, с подписями из конфига: для правки подписей."""
+        labels = {str(k): str(v) for k, v in (inv.get("channels") or {}).items()}
+        try:
+            chans = cls(dev_id, inv.get("name"), values, None).channels()
+        except Exception:
+            return []
+        return [{"key": c.key, "name": labels.get(c.key, c.name), "default": c.name, "kind": c.kind,
+                 "unit": c.unit, "hidden": c.hidden} for c in chans]
 
     def _effective(self, dev_id, over=None):
         """Настройки прибора: умолчания драйвера, конфиг, поверх — правки клиента (over[id])."""
@@ -317,7 +331,8 @@ class Collector:
             if p and p not in full:
                 full.append(p)
         full += [i for i in ids if i not in full]
-        over = {**(tpl.get("settings") or {}), **(settings or {})}
+        tset, uset = tpl.get("settings") or {}, settings or {}        # правки из ⚙ — поверх шаблона, по прибору
+        over = {i: {**(tset.get(i) or {}), **(uset.get(i) or {})} for i in {*tset, *uset}}
         devs = {}
         try:
             for i in full:
@@ -345,6 +360,7 @@ class Collector:
             raise CollectorError(str(e)) from None
         self._calc_by_input = calc_by
         self.session = {"name": _safe_name(name or tpl.get("name") or "опыт"), "note": note, "rules": rules,
+                        "ids": ids, "template": template or None,
                         "events": [], "pauses": [], "marks": 0, "prepared": time.time(), "preroll": 0.0}
         for d in devs.values():
             self._index_channels(d)
@@ -407,6 +423,7 @@ class Collector:
         self.storage.close()
         self.last_run = {"name": self.session["name"], "dir": str(self.storage.dir), "t0": self.t0,
                          "duration_s": round(now - self.t0, 3)}
+        self._last_template = self._session_template()     # «сохранить как шаблон» и после стопа
         self._reset()
         self._publish_state()
         return self.last_run
@@ -479,6 +496,123 @@ class Collector:
         if res.get("text"):
             self._journal(res.get("kind", "set"), res["text"], by=by, device=dev.id)
         return res
+
+    # ================= стенд: приборы в devices.yaml =================
+    def _cmd_drivers(self):
+        """Драйверы, которые можно добавить из интерфейса."""
+        out = []
+        for cls in REGISTRY.values():
+            if cls.group in ADDABLE:
+                d = cls.describe()
+                d["schema"] = d.pop("settings")
+                d["defaults"] = cls.defaults()
+                out.append(d)
+        return sorted(out, key=lambda d: (ADDABLE.index(d["group"]), d["title"]))
+
+    def _stand_check(self):
+        self._need(IDLE)
+        if self.scan["run"]:
+            raise CollectorError("Идёт перебор приборов")
+        if self.cfg.dir is None:
+            raise CollectorError("Конфиг собран не из файла: стенд не правится")
+
+    def _stand_reload(self):
+        from ..config import load
+        new = load(self.cfg.dir)
+        self.cfg.devices, self.cfg.local, self.cfg.templates = new.devices, new.local, new.templates
+        self.found = {k: v for k, v in self.found.items() if k in new.devices}
+        self._publish({"type": "inventory", "inventory": self._inventory(), "found": self.found})
+
+    @staticmethod
+    def _labels(channels):
+        return {str(k): str(v).strip() for k, v in (channels or {}).items() if str(v).strip()}
+
+    def _cmd_device_add(self, driver, name="", settings=None, channels=None, id=None, by=""):
+        self._stand_check()
+        cls = REGISTRY.get(driver)
+        if cls is None or cls.group not in ADDABLE:
+            raise CollectorError(f"Нет драйвера «{driver}»")
+        free = (cls.type_id if n == 1 else f"{cls.type_id}_{n}" for n in range(1, 1000))
+        dev_id = str(id or "").strip() or next(i for i in free if i not in self.cfg.devices)
+        if not stand.ID_RE.match(dev_id):
+            raise CollectorError("Идентификатор: латиница, цифры и _, с буквы, до 32 знаков")
+        if dev_id in self.cfg.devices:
+            raise CollectorError(f"Прибор «{dev_id}» уже есть")
+        try:
+            vals = cls.validate(settings or {})
+        except DriverError as e:
+            raise CollectorError(str(e)) from None
+        defaults = cls.defaults()
+        keep = {k: v for k, v in vals.items() if str(v) != str(defaults.get(k))}
+        stand.add_device(self.cfg.dir, dev_id, driver, str(name).strip() or cls.title, keep, self._labels(channels))
+        self._stand_reload()
+        return {"id": dev_id}
+
+    def _cmd_device_edit(self, id, name=None, channels=None, by=""):
+        self._stand_check()
+        if id not in self.cfg.devices:
+            raise CollectorError(f"Нет прибора «{id}»")
+        labels = None if channels is None else {str(k): str(v).strip() for k, v in channels.items()}
+        stand.edit_device(self.cfg.dir, id, None if name is None else str(name).strip() or None, labels)
+        self._stand_reload()
+        return {"id": id}
+
+    def _cmd_device_del(self, id, by=""):
+        self._stand_check()
+        if id not in self.cfg.devices:
+            raise CollectorError(f"Нет прибора «{id}»")
+        gone = [id] + [c for c, ci in self.cfg.devices.items() if ci.get("parent") == id]
+        stand.delete_device(self.cfg.dir, id)
+        drop_local(self.cfg, gone)
+        self._stand_reload()
+        return {"deleted": gone}
+
+    # ================= шаблоны опытов =================
+    def _templates(self):
+        return {k: {"name": v.get("name", k), "devices": v.get("devices", []), "layout": v.get("layout") or []}
+                for k, v in self.cfg.templates.items()}
+
+    def _session_template(self):
+        """Шаблон из текущего опыта: приборы, настройки (что отличается от стенда), оповещения."""
+        s, settings = self.session, {}
+        for i in s["ids"]:
+            dev = self.devices.get(i)
+            if dev is None:
+                continue
+            try:
+                base = self._effective(i)
+            except (DriverError, KeyError):
+                base = {}
+            diff = {k: v for k, v in dev.drv.cfg.items() if str(v) != str(base.get(k))}
+            if diff:
+                settings[i] = diff
+        return {"devices": list(s["ids"]), "settings": settings, "alarms": list(s["rules"])}
+
+    def _cmd_template_save(self, name, layout=None, overwrite=False, by=""):
+        """Сохранить опыт как шаблон: идущий или только что остановленный. Раскладку даёт интерфейс."""
+        body = self._session_template() if self.session else self._last_template
+        if body is None:
+            raise CollectorError("Нет опыта, из которого делать шаблон")
+        name = str(name).strip()
+        tid = re.sub(r"[^\w-]+", "_", name.lower()).strip("_")
+        if not tid:
+            raise CollectorError("Нужно имя шаблона")
+        if self.cfg.dir is None:
+            raise CollectorError("Конфиг собран не из файла: шаблон некуда сохранить")
+        path = self.cfg.dir / "templates" / f"{tid}.yaml"
+        if path.exists() and not overwrite:
+            return {"id": tid, "exists": True}
+        tpl = {"name": name, **body}
+        panels = [{"series": [str(c) for c in p.get("series") or []], "w": int(p.get("w") or 1), "h": int(p.get("h") or 1)}
+                  for p in layout or []]
+        tpl["layout"] = [p for p in panels if p["series"]]
+        path.parent.mkdir(exist_ok=True)
+        head = f"# Сохранён из интерфейса {time.strftime('%Y-%m-%d %H:%M')}{f' ({by})' if by else ''}\n"
+        path.write_text(head + yaml.safe_dump(tpl, allow_unicode=True, sort_keys=False, default_flow_style=None,
+                                              width=120), encoding="utf-8")
+        self.cfg.templates[tid] = tpl
+        self._publish({"type": "templates", "templates": self._templates()})
+        return {"id": tid, "exists": False}
 
     def _cmd_runs(self, limit=20):
         """Опыты на диске, новые сверху: для «Недавних» и «Анализа»."""
