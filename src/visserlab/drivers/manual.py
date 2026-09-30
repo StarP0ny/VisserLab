@@ -11,6 +11,7 @@ class Manual(Driver):
     model = "ручной ввод"
     icon = "manual"
     group = "manual"
+    actions = ["add"]
     settings = [
         Field("channel", "Величина", "text", "значение"),
         Field("unit", "Единица", "text", ""),

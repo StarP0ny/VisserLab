@@ -133,6 +133,7 @@ class SimThermal(_Sim):
     title = "Тепловизор (сим)"
     model = "симулятор UVC 256×192"
     icon = "thermal"
+    actions = ["roi_add", "roi_del", "roi_clear"]
     settings = [
         Field("fps", "Частота кадров", "select", "5", unit="к/с", options=["1", "5", "9", "25"],
               hint="Сырые кадры 256×192×16 бит: 5 к/с ≈ 1,8 ГБ/ч, 25 к/с ≈ 8,8 ГБ/ч."),
@@ -147,10 +148,10 @@ class SimThermal(_Sim):
 
     def channels(self):
         fps = float(self.cfg["fps"])
-        ch = [Channel("frame", "кадр", "frame", "1/64 K", fps, shape=(H, W), dtype="<u2"),
-              Channel("profile", "профиль", "profile", "°C", fps, shape=(BX1 - BX0,), dtype="<f4"),
+        ch = [Channel("frame", "кадр", "frame", "°C", fps, shape=(H, W), dtype="<u2", scale=1 / 64, offset=-273.15),
+              Channel("profile", "профиль", "profile", "°C", fps, shape=(BX1 - BX0,), dtype="<f4", axis=(0, LEN, "мм")),
               Channel("max", "максимум", "scalar", "°C", fps, dp=1)]
-        ch += [Channel(f"roi{n}", f"точка {n}", "scalar", "°C", fps, dp=1) for n, _, _ in self.rois]
+        ch += [Channel(f"roi{n}", f"точка {n}", "scalar", "°C", fps, dp=1, at=("frame", c, r)) for n, c, r in self.rois]
         return ch
 
     def run(self, stop):
@@ -178,9 +179,10 @@ class SimThermal(_Sim):
             self.rois = self.rois + ((n, c, r),)
             where = f"{fmt_num(float(_MM[0, c]), 0)} мм от входа" if BX0 <= c < BX1 else "вне корпуса"
             return {"kind": "sys", "text": f"{self.name}: точка {n}, {where}", "name": n}
-        if name == "roi_del":
-            self.rois = tuple(x for x in self.rois if x[0] != args.get("name"))
-            return {"kind": "sys", "text": f"{self.name}: точка {args.get('name')} удалена"}
+        if name == "roi_del":             # по имени «A» или по ключу канала «roiA»
+            n = args.get("name") or str(args.get("key", ""))[3:]
+            self.rois = tuple(x for x in self.rois if x[0] != n)
+            return {"kind": "sys", "text": f"{self.name}: точка {n} удалена"}
         if name == "roi_clear":
             n, self.rois = len(self.rois), ()
             return {"kind": "sys", "text": f"{self.name}: удалены все точки ({n})"}

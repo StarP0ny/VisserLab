@@ -63,7 +63,7 @@ svg.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.
 .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 .btn.rec { background:var(--rec); border-color:var(--rec); color:var(--on-rec); }
 .btn.warn { background:var(--pause-weak); border-color:var(--pause); color:var(--fg); }
-.btn.ghost { background:transparent; border-color:transparent; }
+.btn.drag-ghost { background:transparent; border-color:transparent; }
 .btn.ghost:hover:not(:disabled) { background:var(--surface); border-color:var(--line); }
 .btn.sm { min-height:28px; padding-inline:10px; font-size:13px; }
 .icon-btn { display:inline-grid; place-items:center; width:30px; height:30px; border-radius:7px; border:1px solid transparent; background:transparent; cursor:pointer; color:var(--muted); }
@@ -342,8 +342,8 @@ pre.hex { font:12px/1.6 var(--f-num); background:var(--surface); border:1px soli
 .ctx button { text-align:left; border:0; background:transparent; padding:8px 10px; border-radius:7px; cursor:pointer; display:flex; justify-content:space-between; gap:14px; }
 .ctx button:hover { background:var(--surface); }
 .ctx small { color:var(--faint); }
-.ghost { position:fixed; z-index:70; pointer-events:none; display:flex; align-items:center; gap:8px; padding:6px 11px; border-radius:9px; background:var(--panel); border:1px solid var(--accent); box-shadow:var(--shadow); font-size:13px; font-weight:500; transform:translate(14px,10px); white-space:nowrap; }
-.ghost .n { font-size:11px; padding:1px 6px; border-radius:5px; background:var(--accent); color:var(--on-accent); }
+.drag-ghost { position:fixed; z-index:70; pointer-events:none; display:flex; align-items:center; gap:8px; padding:6px 11px; border-radius:9px; background:var(--panel); border:1px solid var(--accent); box-shadow:var(--shadow); font-size:13px; font-weight:500; transform:translate(14px,10px); white-space:nowrap; }
+.drag-ghost .n { font-size:11px; padding:1px 6px; border-radius:5px; background:var(--accent); color:var(--on-accent); }
 .toast { position:fixed; z-index:80; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:9px 16px; border-radius:10px; box-shadow:var(--shadow); font-size:13px; max-width:calc(100vw - 32px); }
 .an { max-width:1000px; margin-inline:auto; padding-block:20px; display:grid; gap:18px; }
 .an-t { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
@@ -399,7 +399,7 @@ pre.hex { font:12px/1.6 var(--f-num); background:var(--surface); border:1px soli
 <div id="floats"></div>
 <div id="modal" class="scrim" hidden></div>
 <div id="ctx" class="ctx" hidden></div>
-<div id="ghost" class="ghost" hidden></div>
+<div id="ghost" class="drag-ghost" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <div id="tip" class="tip" role="tooltip" hidden></div>
 

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VisserLab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='5' fill='%232B48C8'/%3E%3Cpath d='M3 12l3-4 3 3 3-6 5 7' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;600&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="down" class="down" role="alert" hidden></div>
+<div id="app">
+  <section id="s-home" class="screen scroll"></section>
+  <section id="s-select" class="screen scroll" hidden></section>
+  <section id="s-settings" class="screen scroll" hidden></section>
+  <section id="s-exp" class="screen exp" hidden></section>
+  <section id="s-analysis" class="screen scroll" hidden></section>
+</div>
+<div id="modal" class="scrim" hidden></div>
+<div id="ctx" class="ctx" hidden></div>
+<div id="ghost" class="drag-ghost" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

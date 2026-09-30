@@ -46,6 +46,7 @@ TCP `127.0.0.1:8765` (порт задаётся в `config/devices.yaml`), JSON 
 | `set` | `device`, `changes` | то же; поля без `live` во время записи запрещены |
 | `action` | `device`, `name`, `args` | то же; `reconnect` есть у всех приборов |
 | `history` | `channel`, `t_from`, `t_to`, `points` | скаляры текущего опыта, мин/макс в каждом бакете |
+| `runs` | `limit` | всегда; опыты на диске, новые сверху |
 
 Снимок `hello` содержит: `state`, `session` (имя, t0, паузы, папка, правила тревог), `devices` (статус, настройки, схема формы, каналы), `inventory` (все приборы конфига и результат поиска), `templates`, `alarms`, `events` (журнал с начала подготовки), `last` (последние значения).
 
@@ -69,7 +70,9 @@ TCP `127.0.0.1:8765` (порт задаётся в `config/devices.yaml`), JSON 
 
 ## Приборы и драйверы
 
-Драйвер — это класс в `visserlab/drivers/`, зарегистрированный через `@register`. Контракт описан в [visserlab/core/driver.py](../visserlab/core/driver.py): схема настроек, каналы, `discover`, `open` / `run` / `close`, `apply` для настроек с `live`, `action`.
+Драйвер — это класс в `src/visserlab/drivers/`, зарегистрированный через `@register`. Контракт описан в [src/visserlab/core/driver.py](../src/visserlab/core/driver.py): схема настроек, каналы, `discover`, `open` / `run` / `close`, `apply` для настроек с `live`, `action` и список `actions`, которые интерфейс может предложить.
+
+Канал сообщает интерфейсу всё, что нужно для показа: `kind`, `unit`, `rate`, `dp`, для кадров — `shape`, `dtype`, пересчёт сырого значения в физическое (`scale`, `offset`), для точки замера — где она на кадре (`at`), для профиля — ось (`axis`).
 
 | group | Поток | Откуда данные |
 |---|---|---|

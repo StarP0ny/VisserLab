@@ -1,6 +1,7 @@
 """VisserLab: регистратор опытов.
 
   python -m visserlab collect                    сборщик: держит приборы, пишет опыты, ждёт клиентов
+  python -m visserlab web [--host 0.0.0.0]       веб-интерфейс (к уже запущенному сборщику)
   python -m visserlab ctl <команда> [аргументы]  управление запущенным сборщиком (ctl без команды — справка)
   python -m visserlab record [--template sim]    запись из консоли, без сборщика и веба
   python -m visserlab devices                    приборы из конфига и проверка, отвечают ли
@@ -21,6 +22,12 @@ def main():
 
     c = sub.add_parser("collect", help="запустить сборщик")
     c.add_argument("--port", type=int, default=None)
+    c.add_argument("--runs-dir", default=None, help="куда писать опыты (по умолчанию из конфига)")
+
+    w = sub.add_parser("web", help="веб-интерфейс")
+    w.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — открыть для телефона (по ссылке с токеном)")
+    w.add_argument("--port", type=int, default=8080)
+    w.add_argument("--collector-port", type=int, default=None, help="порт сборщика (по умолчанию из конфига)")
 
     k = sub.add_parser("ctl", help="команда запущенному сборщику", add_help=False)
     k.add_argument("--port", type=int, default=None)
@@ -60,6 +67,11 @@ def main():
         print(e, file=sys.stderr)
         return 2
 
+    if a.cmd == "web":
+        if a.collector_port:
+            cfg.port = a.collector_port
+        return web(cfg, a.host, a.port)
+
     if a.cmd == "ctl":
         from . import ctl
         return ctl.main(a.port or cfg.port, a.args)
@@ -89,6 +101,9 @@ def main():
         from .core.server import serve
         from .record import ConsoleLog
         port = a.port or cfg.port
+        if a.runs_dir:
+            from pathlib import Path
+            cfg.runs_dir = Path(a.runs_dir)
         coll = Collector(cfg).launch()
         coll.subscribe(ConsoleLog(coll, status_every=0))
         print(f"Сборщик: 127.0.0.1:{port}, опыты в {cfg.runs_dir}. Ctrl-C — остановить "
@@ -106,6 +121,27 @@ def main():
             if run:
                 print(f"Опыт сохранён: {run['dir']}")
         return 0
+
+
+def web(cfg, host, port):
+    import secrets
+    import socket
+
+    import uvicorn
+
+    from .web.server import LOOPBACK, create_app
+    token = None if host in LOOPBACK else secrets.token_urlsafe(9)
+    print(f"Веб: http://127.0.0.1:{port}/  (сборщик ждём на 127.0.0.1:{cfg.port})")
+    if token:
+        ips = {ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")}
+        for ip in sorted(ips):
+            print(f"  с телефона: http://{ip}:{port}/?t={token}")
+    print("Ctrl-C — остановить веб. Сборщик и опыт это не трогает.", flush=True)
+    try:
+        uvicorn.run(create_app(cfg.port, token), host=host, port=port, log_level="warning")
+    except KeyboardInterrupt:
+        pass
+    return 0
 
 
 if __name__ == "__main__":

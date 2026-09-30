@@ -19,6 +19,7 @@ from concurrent.futures import Future
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from ..config import code_version
 from .alarms import Alarms, RuleError
@@ -107,8 +108,10 @@ class Device:
         d = self.drv
         return {"id": self.id, "name": self.name, "driver": d.type_id, "model": d.model, "icon": d.icon,
                 "group": d.group, "parent": self.parent, "status": self.status, "reason": self.reason,
+                "actions": list(d.actions),
                 "settings": dict(d.cfg), "schema": [f.to_dict() for f in d.settings],
-                "channels": [c.to_dict() for c in self.channels.values()]}
+                "channels": [c.to_dict() for c in self.channels.values()],
+                "samples": self.samples, "last_t": self.last_t}
 
 
 class Collector:
@@ -209,9 +212,12 @@ class Collector:
         s = self.session
         return {
             "state": self.state, "t": time.time(),
+            "config": {"preroll_s": self.cfg.preroll_s, "preroll_fps": self.cfg.preroll_fps,
+                       "runs_dir": str(self.cfg.runs_dir)},
             "session": None if s is None else {
                 "name": s["name"], "note": s["note"], "t0": self.t0, "pauses": s["pauses"],
-                "prepared": s["prepared"], "dir": str(self.storage.dir) if self.storage else None,
+                "prepared": s["prepared"], "preroll": s["preroll"],
+                "dir": str(self.storage.dir) if self.storage else None,
                 "alarms": s["rules"]},
             "last_run": self.last_run,
             "devices": [d.info() for d in self.devices.values()],
@@ -227,9 +233,14 @@ class Collector:
         out = []
         for i, inv in self.cfg.devices.items():
             cls = REGISTRY[inv["driver"]]
-            out.append({"id": i, "name": inv.get("name") or cls.title, "parent": inv.get("parent"),
-                        "settings": {**cls.defaults(), **(inv.get("settings") or {})},
-                        "found": self.found.get(i), **cls.describe()})
+            d = cls.describe()
+            d["schema"] = d.pop("settings")
+            try:
+                values = {**cls.defaults(), **cls.validate(inv.get("settings") or {})}
+            except DriverError:
+                values = {**cls.defaults(), **(inv.get("settings") or {})}
+            out.append({**d, "id": i, "name": inv.get("name") or cls.title, "parent": inv.get("parent"),
+                        "settings": values, "found": self.found.get(i)})
         return out
 
     def _discover(self):
@@ -438,6 +449,22 @@ class Collector:
         if res.get("text"):
             self._journal(res.get("kind", "set"), res["text"], by=by, device=dev.id)
         return res
+
+    def _cmd_runs(self, limit=20):
+        """Опыты на диске, новые сверху: для «Недавних» и «Анализа»."""
+        root = Path(self.cfg.runs_dir)
+        if not root.is_dir():
+            return []
+        out = []
+        for d in sorted((p for p in root.iterdir() if p.is_dir()), reverse=True)[:int(limit)]:
+            try:
+                m = yaml.safe_load((d / "meta.yaml").read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                m = {}
+            out.append({"run": d.name, "dir": str(d), "name": m.get("name", d.name), "note": m.get("note", ""),
+                        "started": m.get("started_local"), "duration_s": m.get("duration_s"),
+                        "devices": len(m.get("devices") or {}), "complete": "ended_unix" in m})
+        return out
 
     def _cmd_history(self, channel, t_from=None, t_to=None, points=2000):
         h = self.hist.get(channel)

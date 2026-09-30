@@ -8,7 +8,7 @@ import yaml
 from . import drivers  # noqa: F401  регистрирует драйверы
 from .core.driver import REGISTRY
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]      # src/visserlab/config.py → корень репо
 CONFIG_DIR = REPO / "config"
 
 
@@ -66,7 +66,7 @@ def code_version():
     try:
         sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
                              capture_output=True, text=True, timeout=5).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--", "visserlab", "config"], cwd=REPO,
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "config"], cwd=REPO,
                                capture_output=True, text=True, timeout=5).stdout.strip()
         return sha + ("-dirty" if dirty else "") if sha else "unknown"
     except (OSError, subprocess.SubprocessError):

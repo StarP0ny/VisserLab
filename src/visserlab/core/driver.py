@@ -97,10 +97,15 @@ class Channel:
     shape: tuple = ()             # frame/profile
     dtype: str = ""               # frame/profile: '<u2', '<f4'
     hidden: bool = False          # в интерфейсе свёрнут по умолчанию
+    scale: float = 1.0            # физическая величина = сырое · scale + offset (в файлах — сырое)
+    offset: float = 0.0
+    at: tuple = ()                # точка на кадре другого канала: (ключ кадра, x, y)
+    axis: tuple = ()              # ось профиля: (от, до, единица)
 
     def to_dict(self):
         d = asdict(self)
-        d["shape"] = list(self.shape)
+        for k in ("shape", "at", "axis"):
+            d[k] = list(getattr(self, k))
         return d
 
     def signature(self):
@@ -156,6 +161,7 @@ class Driver:
     icon = "device"
     group = "direct"
     settings: list[Field] = []
+    actions: list[str] = []       # действия прибора, которые интерфейс может предложить (кроме reconnect)
 
     def __init__(self, dev_id, name, cfg, ctx):
         self.id, self.name, self.ctx = dev_id, name or self.title, ctx
@@ -184,7 +190,7 @@ class Driver:
     @classmethod
     def describe(cls):
         return {"driver": cls.type_id, "title": cls.title, "model": cls.model, "icon": cls.icon,
-                "group": cls.group, "settings": [f.to_dict() for f in cls.settings]}
+                "group": cls.group, "settings": [f.to_dict() for f in cls.settings], "actions": list(cls.actions)}
 
     @classmethod
     def discover(cls, cfg, children=None) -> Found:
