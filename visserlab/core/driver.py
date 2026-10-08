@@ -7,7 +7,7 @@
 Что ядро даёт драйверу (`ctx`):
   ctx.emit(values, t=None, dev=None)  отсчёт: {ключ канала: значение}; t — time.time()
                                       в момент получения; dev — прибор-ребёнок шлюза
-  ctx.online(ok, reason="")           явный статус связи (данные сами означают «на связи»)
+  ctx.online(ok, reason="", dev=None) явный статус связи; dev — прибор-ребёнок шлюза
   ctx.t0()                            время старта записи или None
 """
 from __future__ import annotations

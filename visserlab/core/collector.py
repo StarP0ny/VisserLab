@@ -58,8 +58,8 @@ class _Ctx:
     def emit(self, values, t=None, dev=None):
         self.c._q.put(("S", dev or self.dev_id, time.time() if t is None else t, values))
 
-    def online(self, ok, reason=""):
-        self.c._q.put(("L", self.dev_id, ok, reason))
+    def online(self, ok, reason="", dev=None):
+        self.c._q.put(("L", dev or self.dev_id, ok, reason))
 
     def t0(self):
         return self.c.t0
