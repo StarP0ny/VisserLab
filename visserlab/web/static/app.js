@@ -1217,6 +1217,7 @@ document.addEventListener('pointermove', e => {
 /* ================= окно прибора ================= */
 let M = null;
 function openDevWin(devId, tab) {
+  closeExchange();
   const d = S.devices[devId] || invById(devId);
   if (!d) return;
   const live = !!S.devices[devId] && !S.done;
@@ -1262,7 +1263,7 @@ function renderModal() {
   else if (M.tab === 'sensors') body = gatewaySensors(d, M.live);
   else if (M.tab === 'diag' && gateway) {
     const ds = S.devStatus[M.id] || {}, found = S.found[M.id] || {};
-    body = `<dl class="kv"><dt>Связь с платой</dt><dd>${gatewayStatus(d, M.live)}</dd><dt>Порт</dt><dd class="mono">${esc(M.draft.port || 'не выбран')}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd><dt>Модель</dt><dd>${esc(d.model)}</dd><dt>Результат проверки</dt><dd>${esc((M.live ? ds.reason : found.note) || '—')}</dd></dl><p class="empty-note">Состояние датчиков отображается отдельно во вкладке «Датчики».</p>${M.live ? '<button class="btn" data-act="reconnect">Переподключить</button>' : `<button class="btn" data-act="gwCheck" ${S.searching || S.scan.run ? 'disabled' : ''}>${S.searching ? 'Проверяю…' : 'Проверить подключение'}</button>`}`;
+    body = `<dl class="kv"><dt>Связь с платой</dt><dd>${gatewayStatus(d, M.live)}</dd><dt>Порт</dt><dd class="mono">${esc(M.draft.port || 'не выбран')}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd><dt>Модель</dt><dd>${esc(d.model)}</dd><dt>Результат проверки</dt><dd>${esc((M.live ? ds.reason : found.note) || '—')}</dd></dl><p class="empty-note">Состояние датчиков отображается отдельно во вкладке «Датчики».</p><p><button class="btn" data-act="gwExchange" data-dev="${esc(d.id)}">Окно обмена</button></p>${M.live ? '<button class="btn" data-act="reconnect">Переподключить</button>' : `<button class="btn" data-act="gwCheck" ${S.searching || S.scan.run ? 'disabled' : ''}>${S.searching ? 'Проверяю…' : 'Проверить подключение'}</button>`}`;
   }
   else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th></th><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${[...d.channels.map(c => ({ c, sw: (d.switch || []).find(x => x.key === c.key) })), ...(d.switch || []).filter(x => !x.on).map(x => ({ off: x }))].map(({ c, sw, off }) => off ? `<tr class="off"><td>${swHTML(d.id, off.key, false, off.name)}</td><td>${esc(off.name)}</td><td colspan="3">выключен</td></tr>` : `<tr><td>${sw ? swHTML(d.id, c.key, true, c.name) : ''}</td><td>${esc(c.name)}</td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${c.rate ? (c.rate >= 1 ? fmtV(c.rate, c.rate % 1 ? 1 : 0) + ' Гц' : 'раз в ' + fmtV(1 / c.rate, 0) + ' с') : c.kind === 'points' ? 'вручную' : 'по входам'}</td></tr>`).join('')}</tbody></table>`;
   else if (M.tab === 'diag') { const ds = S.devStatus[M.id] || {}; body = `<dl class="kv"><dt>Статус</dt><dd>${esc({ ok: 'на связи', lost: 'нет связи', stale: 'нет данных', wait: 'ждём данных' }[ds.status] || ds.status || '—')}</dd>${ds.reason ? `<dt>Причина</dt><dd>${esc(ds.reason)}</dd>` : ''}<dt>Последний отсчёт</dt><dd class="num">${ds.age != null ? fmtV(ds.age, 1) + ' с назад' : '—'}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd></dl>${['direct', 'gateway', 'child'].includes(d.group) ? '<p><button class="btn sm" data-act="reconnect">Переподключить</button></p>' : ''}`; }
@@ -1284,7 +1285,57 @@ function renderModal() {
   </div>`;
   if (M.tab === 'input') setTimeout(() => { const el = $('#mVal'); if (el) el.focus(); }, 0);
 }
-function closeModal() { $('#modal').hidden = true; M = null; SW = null; PH = null; ND = null; TS = null; }
+function closeModal() { closeExchange(); $('#modal').hidden = true; M = null; SW = null; PH = null; ND = null; TS = null; }
+
+/* ---------- окно бинарного обмена ---------- */
+let EX = null;
+function closeExchange() {
+  if (!EX) return;
+  const old = EX; EX = null; clearTimeout(old.timer);
+  request('gateway_exchange', { device: old.device, client: old.client, action: 'close' }).catch(() => {});
+}
+function openExchange(device) {
+  const settings = M ? { ...S.drafts, [device]: { ...S.drafts[device], ...M.draft } } : S.drafts;
+  closeModal();
+  EX = { device, client: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, settings, rows: [], cursor: 0, session: null, paused: false, hidePings: false, omitted: 0 };
+  $('#modal').hidden = false;
+  renderExchange(); pollExchange(EX);
+}
+async function pollExchange(ex) {
+  try {
+    const data = await request('gateway_exchange', { device: ex.device, client: ex.client, after: ex.cursor, settings: ex.settings });
+    if (EX !== ex) { request('gateway_exchange', { device: ex.device, client: ex.client, action: 'close' }).catch(() => {}); return; }
+    if (ex.session !== null && ex.session !== data.session) { ex.cursor = 0; ex.rows = []; ex.session = data.session; }
+    else { ex.rows.push(...data.rows); ex.cursor = data.cursor; }
+    ex.session = data.session; ex.rows = ex.rows.slice(-512);
+    ex.omitted += data.omitted; ex.info = data; ex.error = data.error;
+  } catch (err) { if (EX !== ex) return; ex.error = err.message; }
+  if (EX !== ex) return;
+  if (!ex.paused) updateExchange();
+  ex.timer = setTimeout(() => pollExchange(ex), ex.error ? 2000 : 500);
+}
+function renderExchange() {
+  const ex = EX, d = invById(ex.device) || S.devices[ex.device];
+  $('#modal').innerHTML = `<div class="modal exchange" role="dialog" aria-modal="true" aria-label="Обмен с платой">
+    <div class="m-h"><span class="ic">${icon(d?.icon || 'board')}</span><h3>Обмен · ${esc(d?.name || ex.device)}</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button><div class="sub">ПК ⇄ плата · бинарные кадры</div></div>
+    <div class="m-b"><div class="toolbar"><button class="btn sm" data-act="exPause">${ex.paused ? 'Продолжить' : 'Пауза просмотра'}</button><button class="btn sm" data-act="exClear">Очистить</button><button class="btn sm" data-act="exSave">Сохранить журнал</button><button class="btn sm" data-act="exPings">${ex.hidePings ? 'Показать пинги' : 'Скрыть пинги'}</button></div><p class="empty-note" id="exchangeInfo"></p><div class="exchange-scroll"><table class="t"><thead><tr><th>Время ПК</th><th>Направление</th><th>Кадр</th><th>Sequence</th><th>Time, мкс от 2000 / монотонное</th><th>Байт payload</th><th>Содержимое</th></tr></thead><tbody id="exchangeRows"></tbody></table></div><p class="empty-note">TX — ПК → плата, RX — плата → ПК. Пинги обслуживаются автоматически. Пауза останавливает обновление окна; обмен продолжается. Журнал хранит последние 512 кадров. Вне опыта открывается диагностическое подключение без запуска датчиков.</p></div>
+    <div class="m-f"><span class="sp"></span><button class="btn" data-act="mClose">Закрыть</button></div></div>`;
+  updateExchange();
+}
+function updateExchange() {
+  if (!EX || !$('#exchangeRows')) return;
+  const ex = EX, info = ex.info || {};
+  $('#exchangeInfo').textContent = ex.error || `${info.port || 'Подключаюсь…'} · ошибок кадров: ${info.bad_frames || 0} · пропущено по sequence: ${info.lost_frames || 0}${ex.omitted ? ' · вытеснено до чтения: ' + ex.omitted : ''}`;
+  const expanded = new Set($$('#exchangeRows details[open]').map(el => el.dataset.frame));
+  const scroll = $('.exchange-scroll'), position = scroll.scrollTop, bottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 40;
+  $('#exchangeRows').innerHTML = ex.rows.filter(r => !ex.hidePings || !['PING', 'PONG'].includes(r.type)).map(r => `<tr><td class="mono">${new Date(r.received * 1000).toLocaleTimeString('ru-RU', { hour12: false })}.${String(Math.floor(r.received * 1000) % 1000).padStart(3, '0')}</td><td class="mono">${r.direction === 'TX' ? 'TX →' : 'RX ←'}</td><td>${esc(r.type)}</td><td class="mono">${r.sequence}</td><td class="mono">${r.time}</td><td class="mono">${r.length}</td><td><details data-frame="${r.id}"${expanded.has(String(r.id)) ? ' open' : ''}><summary class="mono">${esc(r.payload.slice(0, 47) || 'пусто')}${r.payload.length > 47 ? '…' : ''}</summary><pre class="exchange-hex">${esc(r.hex)}</pre></details></td></tr>`).join('') || '<tr><td colspan="7" class="empty-note">Ожидаем кадры…</td></tr>';
+  scroll.scrollTop = bottom ? scroll.scrollHeight : position;
+}
+function saveExchange() {
+  const text = EX.rows.map(r => `${new Date(r.received * 1000).toISOString()} ${r.direction} ${r.type} seq=${r.sequence} time=${r.time} len=${r.length}\n${r.hex}`).join('\n');
+  const url = URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'})), a = document.createElement('a');
+  a.href = url; a.download = `exchange-${EX.device}.txt`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /* ---------- новый прибор ---------- */
 let ND = null;
@@ -1445,6 +1496,11 @@ const ACT = {
   gwSensorPick: b => { if (M.sensorAdd.saving) return; const d = M.sensorAdd.drivers.find(i => i.driver === b.dataset.v); M.sensorAdd = { ...M.sensorAdd, driver: d.driver, draft: { ...d.defaults }, name: d.title }; renderModal(); },
   gwSensorSave: addGatewaySensor,
   gwDiscover: b => discoverGateway(b.dataset.dev, b.dataset.sensor || null),
+  gwExchange: b => openExchange(b.dataset.dev),
+  exPause: () => { EX.paused = !EX.paused; renderExchange(); },
+  exClear: () => { EX.rows = []; EX.omitted = 0; updateExchange(); },
+  exSave: saveExchange,
+  exPings: () => { EX.hidePings = !EX.hidePings; renderExchange(); },
   gwCheck: async () => {
     if (!M || S.searching || S.scan.run) return;
     const id = M.id;

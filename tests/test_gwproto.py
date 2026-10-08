@@ -57,3 +57,26 @@ def test_driver_registration():
     from visserlab.core.driver import REGISTRY
     assert REGISTRY["vgw"].group == "gateway"
     assert REGISTRY["scd41"].group == REGISTRY["sht41"].group == "child"
+
+
+def test_exchange_trace_keeps_exact_wire_and_is_bounded():
+    import threading
+    from collections import deque
+    from visserlab.drivers.vgw import Link
+    link = Link.__new__(Link)
+    link.trace_lock = threading.Lock()
+    link.trace = deque(maxlen=512)
+    link.trace_sequence = 0
+    link.lost_frames = 3
+    link.parser = Parser()
+    link.failure = None
+    for seq in range(600):
+        frame = Frame(Type.PING, seq, 123)
+        link._trace("RX", frame)
+    snapshot = link.trace_snapshot()
+    assert len(snapshot["rows"]) == 512 and snapshot["omitted"] == 88
+    assert bytes.fromhex(snapshot["rows"][-1]["hex"]) == frame.encode()
+    assert snapshot["rows"][-1]["direction"] == "RX"
+    assert snapshot["rows"][-1]["type"] == "PING"
+    assert snapshot["lost_frames"] == 3
+    assert link.trace_snapshot(after=snapshot["cursor"])["rows"] == []

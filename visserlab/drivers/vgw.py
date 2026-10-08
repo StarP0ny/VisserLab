@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+from collections import deque
 import struct
 import threading
 import time
@@ -20,6 +21,9 @@ class Link:
     """One reader owns parsing; a lock serializes commands and automatic PONGs."""
     def __init__(self, port, baud=460800):
         self.serial = serial.serial_for_url(port, baudrate=int(baud), timeout=0.02, write_timeout=1)
+        self.trace_lock = threading.Lock()
+        self.trace = deque(maxlen=512)
+        self.trace_sequence = 0
         self.parser = Parser()
         self.sequence = 0
         self.last_sequence = None
@@ -42,6 +46,7 @@ class Link:
             try:
                 frame = Frame(kind, seq, utc_us(), payload)
                 self.serial.write(frame.encode())
+                self._trace("TX", frame)
             except Exception:
                 self.pending.pop(seq, None)
                 raise
@@ -69,8 +74,29 @@ class Link:
             with self.lock:
                 self.pending.pop(seq, None)
 
+    def _trace(self, direction, frame):
+        try:
+            kind = Type(frame.type).name
+        except ValueError:
+            kind = f"0x{frame.type:04X}"
+        with self.trace_lock:
+            self.trace_sequence += 1
+            self.trace.append({"id": self.trace_sequence, "received": time.time(), "direction": direction,
+                               "type": kind, "sequence": frame.sequence, "time": frame.time,
+                               "length": len(frame.payload), "payload": frame.payload.hex(" "),
+                               "hex": frame.encode().hex(" ")})
+
+    def trace_snapshot(self, after=0):
+        with self.trace_lock:
+            rows = [dict(row) for row in self.trace if row["id"] > after]
+            missed = max(0, self.trace[0]["id"] - after - 1) if self.trace else 0
+        return {"rows": rows, "cursor": self.trace_sequence, "omitted": missed,
+                "lost_frames": self.lost_frames, "bad_frames": self.parser.bad_frames,
+                "error": str(self.failure) if self.failure else ""}
+
     def _dispatch(self, frame):
         received = utc_us()
+        self._trace("RX", frame)
         if self.last_sequence is not None and frame.type != Type.HELLO:
             gap = (frame.sequence - self.last_sequence - 1) & 0xFFFFFFFF
             if gap < 0x80000000:

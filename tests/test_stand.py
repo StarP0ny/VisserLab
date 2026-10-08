@@ -159,6 +159,50 @@ def test_concentrator_children(coll):
     assert {hub, child["id"], "sht41"} <= set(removed)
 
 
+def test_gateway_check_is_targeted_and_monitor_shared(coll, monkeypatch):
+    import queue
+    from types import SimpleNamespace
+    from visserlab.drivers.vgw import Gateway
+    hub = coll.request("device_add", driver="vgw", settings={"port": "COM27"})["id"]
+    child = coll.request("device_add", driver="scd41", parent=hub)["id"]
+    untouched = dict(coll.found)
+    opened = []
+    class FakeLink:
+        failure = None
+        serial = SimpleNamespace(port="COM27")
+        def __init__(self):
+            self.events = queue.Queue()
+            self.commands = []
+            self.closed = False
+        def request(self, kind, **kwargs):
+            self.commands.append(kind)
+        def trace_snapshot(self, after=0):
+            return {"rows": [], "cursor": 0, "omitted": 0, "error": ""}
+        def close(self):
+            self.closed = True
+    def connect(cls, cfg):
+        link = FakeLink(); opened.append(link); return link
+    monkeypatch.setattr(Gateway, "diagnostic_link", classmethod(connect))
+    monkeypatch.setattr(Gateway, "discover", classmethod(lambda *args: pytest.fail("sensor discovery called")))
+    result = coll.request("gateway_check", device=hub)
+    assert result["found"]["ok"] and opened[0].closed
+    assert coll.found.get(child) == untouched.get(child)
+    assert all(coll.found.get(k) == v for k, v in untouched.items() if k != hub)
+    coll.request("gateway_exchange", device=hub, client="A")
+    link = opened[-1]
+    coll.request("gateway_exchange", device=hub, client="B")
+    assert len(opened) == 2
+    coll.request("gateway_check", device=hub)
+    from visserlab.gwproto import Type
+    assert link.commands == [Type.GET_CONFIG]  # no START and no sensor enumeration
+    coll.request("gateway_exchange", device=hub, action="close", client="A")
+    assert not link.closed
+    coll.request("gateway_exchange", device=hub, action="close", client="B")
+    assert link.closed
+    with pytest.raises(CollectorError):
+        coll.request("gateway_exchange", device=child)
+
+
 def test_sensor_discovery_only_selected_gateway_and_sensor(coll, monkeypatch):
     from visserlab.drivers.vgw import Gateway
     from visserlab.core.driver import Found

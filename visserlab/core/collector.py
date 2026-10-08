@@ -131,6 +131,7 @@ class Collector:
         self._subs, self._sub_lock = [], threading.Lock()
         self._thread, self._alive = None, False
         self.found = {}
+        self._gateway_monitors = {}
         self.last_run = None
         self._last_template = None     # шаблон только что остановленного опыта
         self.scan = {"run": False, "ids": [], "cur": None, "frac": 0.0, "text": "", "done": {}}
@@ -292,6 +293,12 @@ class Collector:
             raise CollectorError("Обмен доступен для SensorsMotherboard")
         return cls
 
+    def _close_gateway_monitors(self, device=None):
+        for key, monitor in list(self._gateway_monitors.items()):
+            if device is None or device == key:
+                monitor["link"].close()
+                self._gateway_monitors.pop(key, None)
+
     def _cmd_gateway_check(self, device, settings=None):
         cls = self._gateway_target(device)
         if not self._probing.acquire(blocking=False):
@@ -300,7 +307,8 @@ class Collector:
         temporary = False
         try:
             active = self.devices.get(device)
-            link = getattr(active.drv, "link", None) if active else None
+            monitor = self._gateway_monitors.get(device)
+            link = getattr(active.drv, "link", None) if active else monitor["link"] if monitor else None
             if active and link is None:
                 raise CollectorError("Плата ещё подключается")
             if link is None:
@@ -313,12 +321,52 @@ class Collector:
         except Exception as exc:
             found = {"ok": False, "note": _reason(exc)}
         finally:
+            trace = link.trace_snapshot() if link is not None else None
             if temporary:
                 link.close()
             self._probing.release()
         self.found[device] = found
         self._publish({"type": "found", "found": dict(self.found)})
-        return {"found": found}
+        return {"found": found, "trace": trace}
+
+    def _cmd_gateway_exchange(self, device, action="poll", after=0, settings=None, client="default"):
+        cls = self._gateway_target(device)
+        if action not in ("open", "poll", "close"):
+            raise CollectorError("Неизвестная команда окна обмена")
+        monitor = self._gateway_monitors.get(device)
+        if action == "close":
+            if monitor:
+                monitor["leases"].pop(client, None)
+                if not monitor["leases"]:
+                    monitor["link"].close()
+                    self._gateway_monitors.pop(device, None)
+            return {}
+        active = self.devices.get(device)
+        if active:
+            link = getattr(active.drv, "link", None)
+            if link is None:
+                raise CollectorError("Плата ещё подключается")
+        else:
+            self._need(IDLE)
+            if self.scan["run"] or self._probing.locked():
+                raise CollectorError("Идёт проверка или поиск приборов")
+            if not monitor or monitor["link"].failure:
+                if monitor:
+                    monitor["link"].close()
+                monitor = {"link": cls.diagnostic_link(self._effective(device, settings)), "leases": {}}
+                self._gateway_monitors[device] = monitor
+            monitor["leases"][client] = time.monotonic() + 15
+            link = monitor["link"]
+            # Diagnostic mode consumes unsolicited STATUS/EVENT without starting sensors.
+            while not link.events.empty():
+                try:
+                    link.events.get_nowait()
+                except queue.Empty:
+                    break
+        snapshot = link.trace_snapshot(int(after))
+        snapshot["session"] = id(link)
+        snapshot["port"] = link.serial.port
+        return snapshot
 
     def _discover(self, settings=None, device=None, sensor=None):
         """Одна проверка каждого прибора. settings — правки клиента, ещё не ушедшие в prepare."""
@@ -331,6 +379,7 @@ class Collector:
         if not self._probing.acquire(blocking=False):
             raise CollectorError("Идёт перебор приборов" if self.scan["run"] else "Проверка уже идёт")
         try:
+            self._dispatch(self._close_gateway_monitors, device=device)
             return self._discover_all(settings, device, sensor)
         finally:
             self._probing.release()
@@ -386,6 +435,7 @@ class Collector:
         full += [i for i in ids if i not in full]
         tset, uset = tpl.get("settings") or {}, settings or {}        # правки из ⚙ — поверх шаблона, по прибору
         over = {i: {**(tset.get(i) or {}), **(uset.get(i) or {})} for i in {*tset, *uset}}
+        self._close_gateway_monitors()
         devs = {}
         try:
             for i in full:
@@ -579,6 +629,7 @@ class Collector:
             raise CollectorError("Конфиг собран не из файла: стенд не правится")
 
     def _stand_reload(self):
+        self._close_gateway_monitors()
         from ..config import load
         new = load(self.cfg.dir)
         self.cfg.devices, self.cfg.local, self.cfg.templates = new.devices, new.local, new.templates
@@ -743,6 +794,7 @@ class Collector:
         return {"channel": channel, "t": t, "v": v}
 
     def _cmd_shutdown(self, by="сборщик"):
+        self._close_gateway_monitors()
         if self.state == REC:
             self._cmd_pause(by=by)
         if self.state == PAUSE:
@@ -787,6 +839,7 @@ class Collector:
             raise CollectorError("Порт задаётся для одного прибора")
         if not self._probing.acquire(blocking=False):      # отпустит _scan_run
             raise CollectorError("Идёт проверка приборов")
+        self._close_gateway_monitors()
         self._scan_stop.clear()
         self.scan = {"run": True, "ids": ids, "cur": None, "frac": 0.0, "text": "", "done": {}}
         self._publish_scan()
@@ -1033,6 +1086,12 @@ class Collector:
                     self._on_sample(c.id, t, out, depth + 1)
 
     def _tick(self):
+        now = time.monotonic()
+        for device, monitor in list(self._gateway_monitors.items()):
+            monitor["leases"] = {key: deadline for key, deadline in monitor["leases"].items() if deadline > now}
+            if not monitor["leases"]:
+                monitor["link"].close()
+                self._gateway_monitors.pop(device, None)
         now = time.time()
         for dev in self.devices.values():
             if dev.closing or dev.drv.group in ("manual", "calc", "gateway"):

@@ -451,6 +451,12 @@ body.dragging, body.dragging * { user-select:none !important; -webkit-user-selec
 .drv-group { margin-top:12px; margin-bottom:4px; }
 .gateway .lnk { white-space:nowrap; }
 
+.modal.exchange { width:min(1200px,calc(100vw - 32px)); max-width:1200px; }
+.exchange-scroll { max-height:55vh; overflow:auto; }
+.exchange-scroll .t { font-size:12px; }
+.exchange-scroll td { vertical-align:top; }
+.exchange-hex { white-space:pre-wrap; overflow-wrap:anywhere; min-width:180px; max-width:400px; font-size:11px; }
+
 .sensor-toolbar, .sensor-actions, .sensor-add-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .sensor-toolbar { margin:16px 0; }
 .sensor-list { display:grid; gap:8px; }
