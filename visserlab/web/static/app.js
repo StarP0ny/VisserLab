@@ -87,7 +87,7 @@ const MARK_KINDS = ['user', 'mark', 'manual', 'set', 'warn', 'crit'];
 const S = {
   up: null, why: 'web', port: 8765, off: 0, config: { preroll_s: 300 },
   state: 'idle', run: null, done: null, lastRun: null,
-  inventory: [], templates: {}, found: {}, searching: false, lastSearch: null, runs: [],
+  checking: new Set(), inventory: [], templates: {}, found: {}, searching: false, lastSearch: null, runs: [],
   scan: { run: false, ids: [], cur: null, frac: 0, text: '', done: {} }, ports: null,
   devices: {}, order: [], devStatus: {},
   alarms: { level: 'ok', items: [] }, events: [], last: {},
@@ -451,7 +451,7 @@ function statusOf(inv) {
   if (inv.group === 'calc') return 'calc';
   if (S.scan.run && S.scan.cur === inv.id) return 'scanning';
   if (S.scan.run && S.scan.ids.includes(inv.id)) return 'queued';
-  if (S.searching) return 'checking';
+  if (S.searching || S.checking.has(inv.id)) return 'checking';
   const f = S.found[inv.id];
   return f ? (f.ok ? 'ok' : 'missing') : 'unknown';
 }
@@ -487,11 +487,13 @@ function renderSelect() {
   const selectable = inv.filter(i => i.group !== 'gateway');
   const hw = selectable.filter(i => !['manual', 'calc'].includes(i.group));
   const ls = S.lastSearch ? `проверено в ${hhmmss(S.lastSearch)} · найдено ${hw.filter(i => statusOf(i) === 'ok').length} из ${hw.length}` : 'не проверялись';
-  const lost = inv.filter(i => i.scan && !i.parent && statusOf(i) !== 'ok'), busy = S.searching || S.scan.run || !S.up;
+  const lost = inv.filter(i => i.scan && !i.parent && statusOf(i) !== 'ok'), busy = S.searching || S.checking.size > 0 || S.scan.run || !S.up;
   const groups = [{ title: 'Прямое подключение', items: inv.filter(i => i.group === 'direct') }];
   for (const g of inv.filter(i => i.group === 'gateway')) groups.push({ title: 'Через ' + g.name, gw: g, items: inv.filter(i => i.parent === g.id) });
   groups.push({ title: 'Ручные и вычисляемые', items: inv.filter(i => ['manual', 'calc'].includes(i.group)) });
-  const body = groups.filter(g => g.items.length).map(g => {
+  const concentrators = inv.filter(i => i.group === 'gateway');
+  const hubBody = concentrators.length ? `<div class="grp"><div class="grp-h"><span class="lbl">Концентраторы</span><span class="md">Подключаются вместе с выбранными датчиками</span></div><div class="${S.view === 'tiles' ? 'tiles' : 'rows'}">${concentrators.map(i => gatewayHTML(i)).join('')}</div></div>` : '';
+  const body = hubBody + groups.filter(g => g.items.length).map(g => {
     const shown = g.items.filter(i => S.showMissing || statusOf(i) !== 'missing');
     const hidden = g.items.length - shown.length;
     let head = `<div class="grp-h"><span class="lbl">${esc(g.title)}</span>`;
@@ -513,7 +515,7 @@ function renderSelect() {
       ${S.scan.run ? `<button class="btn warn" data-act="scanStop">${icon('stop')}Стоп</button>`
         : `<button class="btn" data-act="scanAll" ${busy || !lost.length ? 'disabled' : ''} data-tip="Перебор у ненайденных: ${esc([...new Set(lost.map(i => i.scan))].join('; ') || '—')}">${icon('search')}Поиск</button>`}
       <button class="btn" data-act="devNew" ${busy ? 'disabled' : ''} data-tip="Добавить прибор в стенд">${icon('plus')}Прибор</button>
-      ${S.scan.run ? scanLine() : `<span class="num" style="color:var(--muted);font-size:12.5px">${ls}</span>`}
+      ${S.scan.run ? scanLine() : `<span class="num" style="color:var(--muted);font-size:12.5px">${ls}${concentrators.length ? ` · концентраторов на связи ${concentrators.filter(i => statusOf(i) === 'ok').length} из ${concentrators.length}` : ''}</span>`}
       <span class="sp"></span>
       <label class="sw"><input type="checkbox" id="showMissing" ${S.showMissing ? 'checked' : ''}><span></span>Показать недоступные</label>
       <div class="seg" role="group" aria-label="Вид"><button data-act="view" data-v="tiles" aria-pressed="${S.view === 'tiles'}">Плитки</button><button data-act="view" data-v="list" aria-pressed="${S.view === 'list'}">Список</button></div>
@@ -572,6 +574,61 @@ function whyOff(inv) {
   const miss = needsOf(inv).filter(n => !S.sel.has(n));
   return miss.length ? 'нужен ' + miss.map(n => (invById(n) || {}).name || n).join(', ') : '';
 }
+function gatewayStatus(d, live = false) {
+  if (live) {
+    const st = (S.devStatus[d.id] || {}).status;
+    return `<span class="chip ${st === 'ok' ? 'ok' : st === 'lost' ? 'err' : ''}">${esc({ ok: 'на связи', lost: 'нет связи', wait: 'подключение', stale: 'нет связи' }[st] || 'не проверен')}</span>`;
+  }
+  return statusOf(d) === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>на связи</span>' : statusChip(statusOf(d), d);
+}
+function gatewayHTML(d) {
+  const kids = S.inventory.filter(i => i.parent === d.id);
+  const confirmed = kids.filter(i => statusOf(i) === 'ok').length;
+  const note = kids.length ? `Датчики: ${confirmed} из ${kids.length} подтверждены` : 'Датчики не настроены';
+  if (S.view === 'list') return `<div class="rowi gateway" role="button" tabindex="0" data-act="gear" data-dev="${esc(d.id)}">${icon(d.icon)}<b>${esc(d.name)}</b><span class="cn">${esc(connOf(d))}</span>${gatewayStatus(d)}<span class="md">${note}</span><span class="lnk">Настроить →</span></div>`;
+  return `<div class="tile gateway" role="button" tabindex="0" data-act="gear" data-dev="${esc(d.id)}"><span class="ic">${icon(d.icon)}</span><span class="nm">${esc(d.name)}</span><span class="md">${esc(d.model)}</span><span class="cn">${esc(connOf(d))}</span><span class="row">${gatewayStatus(d)}<span class="sp"></span><span class="lnk">Настроить →</span></span><span class="gateway-note">${note}</span></div>`;
+}
+function gatewaySensors(d, live) {
+  const kids = live ? S.order.map(id => S.devices[id]).filter(i => i.parent === d.id) : S.inventory.filter(i => i.parent === d.id);
+  const busy = S.searching || S.scan.run || S.checking.has(d.id);
+  let adding = '';
+  if (M.sensorAdd) {
+    const add = M.sensorAdd, driver = add.drivers.find(i => i.driver === add.driver);
+    adding = `<div class="sensor-add"><div class="sensor-add-head"><b>Добавить датчик</b><button class="icon-btn" data-act="gwSensorCancel" aria-label="Отменить добавление">${icon('x')}</button></div>${add.drivers.length ? `<div class="seg">${add.drivers.map(i => `<button data-act="gwSensorPick" data-v="${esc(i.driver)}" aria-pressed="${i.driver === add.driver}">${esc(i.title)}</button>`).join('')}</div><div class="form" id="gwSensorForm"><div class="f-row"><label class="f-l" for="gwSensorName">Название</label><div class="f-c"><input id="gwSensorName" value="${esc(add.name)}"></div></div>${formHTML('sensor', driver.schema, add.draft, false, false)}</div><div class="sensor-add-actions"><button class="btn" data-act="gwSensorCancel">Отмена</button><button class="btn primary" data-act="gwSensorSave" ${add.saving ? 'disabled' : ''}>${add.saving ? 'Добавляю…' : 'Добавить и проверить'}</button></div>` : '<p class="empty-note">Загружаю список датчиков…</p>'}</div>`;
+  }
+  return `${live ? '' : `<div class="sensor-toolbar"><button class="btn" data-act="gwAddSensor" ${busy || M.sensorAdd ? 'disabled' : ''}>${icon('plus')}Добавить датчик</button><button class="btn" data-act="gwDiscover" data-dev="${esc(d.id)}" ${busy || !kids.length || M.sensorAdd ? 'disabled' : ''}>${busy ? 'Проверяю…' : 'Проверить датчики платы'}</button></div>`}${adding}<p class="empty-note">Подключение подтверждается измерением. Проверяем только датчики этой платы.</p>${kids.length ? `<div class="sensor-list">${kids.map(i => `<div class="sensor-row"><span class="sensor-icon">${icon(i.icon)}</span><div class="sensor-title"><b>${esc(i.name)}</b><small>${esc(i.model)} · ID ${esc(i.settings.sensor_id)}</small></div>${live ? gatewayStatus(i, true) : statusChip(statusOf(i), i)}<div class="sensor-actions">${live ? '' : `<button class="btn sm" data-act="gwDiscover" data-dev="${esc(d.id)}" data-sensor="${esc(i.id)}" ${busy ? 'disabled' : ''}>Проверить</button>`}<button class="btn sm" data-act="gear" data-dev="${esc(i.id)}">Настроить</button></div></div>`).join('')}</div>` : '<p class="empty-note">Датчики ещё не добавлены. Плату можно проверить во вкладке «Диагностика».</p>'}`;
+}
+async function discoverGateway(device, sensor = null) {
+  if (S.searching || S.scan.run || S.checking.size) return;
+  const ids = [device, ...S.inventory.filter(i => i.parent === device && (!sensor || i.id === sensor)).map(i => i.id)];
+  S.checking = new Set(ids);
+  if (M?.id === device) renderModal();
+  if (S.screen === 'select') renderSelect();
+  try {
+    const found = await request('discover', { device, sensor, settings: { ...S.drafts, ...(M?.id === device ? { [device]: M.draft } : {}) } });
+    Object.assign(S.found, found);
+  } catch (error) { toast(error.message); }
+  finally {
+    S.checking = new Set();
+    if (M?.id === device) renderModal();
+    if (S.screen === 'select') renderSelect();
+  }
+}
+async function addGatewaySensor() {
+  if (!M?.sensorAdd || M.sensorAdd.saving) return;
+  const panel = M, add = M.sensorAdd, d = add.drivers.find(i => i.driver === add.driver);
+  add.name = $('#gwSensorName').value.trim() || d.title;
+  add.draft = readForm($('#gwSensorForm')); add.saving = true; renderModal();
+  const result = await run('device_add', { driver: d.driver, parent: panel.id, name: add.name, settings: add.draft, by: BY });
+  if (M !== panel) return;
+  add.saving = false;
+  if (!result) { renderModal(); return; }
+  panel.sensorAdd = null;
+  // Inventory normally arrives before reply; fetch a snapshot if it has not arrived yet.
+  if (!invById(result.id)) { const snap = await run('hello'); if (snap) S.inventory = snap.inventory; }
+  if (M !== panel) return;
+  renderModal(); await discoverGateway(panel.id, result.id);
+}
 function tileHTML(i) {
   const on = S.sel.has(i.id), av = devAvailable(i), st = statusOf(i), why = st === 'missing' ? '' : whyOff(i);
   return `<div class="tile${av || on ? '' : ' off'}" role="button" tabindex="0" data-act="sel" data-dev="${esc(i.id)}" aria-pressed="${on}">
@@ -587,7 +644,7 @@ function rowHTML(i) {
     <button class="icon-btn" data-act="gear" data-dev="${esc(i.id)}" data-tip="Настройки" aria-label="Настройки ${esc(i.name)}">⚙</button></div>`;
 }
 async function runRefresh() {
-  if (S.searching || S.scan.run) return;
+  if (S.searching || S.checking.size || S.scan.run) return;
   S.searching = true; keepName(); renderSelect();
   loadPorts();
   const res = await request('discover', { settings: S.drafts }).catch(e => { toast(e.message); return null; });
@@ -651,7 +708,9 @@ async function prepare() {
   keepName();
   const devices = S.inventory.map(i => i.id).filter(i => S.sel.has(i));
   const settings = {};
-  for (const id of devices) if (S.drafts[id] && Object.keys(S.drafts[id]).length) settings[id] = S.drafts[id];
+  const configured = new Set(devices);
+  for (const id of devices) { const parent = invById(id)?.parent; if (parent) configured.add(parent); }
+  for (const id of configured) if (S.drafts[id] && Object.keys(S.drafts[id]).length) settings[id] = S.drafts[id];
   const snap = await run('prepare', { name: S.draftName.trim(), devices, template: S.template || null, settings, by: BY });
   if (!snap) return;
   S.done = null; S.run = null;
@@ -1194,11 +1253,17 @@ function renderModal() {
   const d = devOf(M); if (!d) { closeModal(); return; }
   const lock = M.live && S.state === 'rec';
   const canAdd = M.live && (d.actions || []).includes('add');
-  const tabs = [['set', 'Настройки'], ...(M.live && d.channels ? [['ch', 'Каналы']] : []), ...(M.live ? [['diag', 'Диагностика']] : [['stand', 'Прибор']]), ...(canAdd ? [['input', 'Ввод отсчёта']] : [])];
+  const gateway = d.group === 'gateway';
+  const tabs = gateway ? [['set', 'Подключение'], ['sensors', 'Датчики'], ['diag', 'Диагностика'], ...(!M.live ? [['stand', 'Плата']] : [])] : [['set', 'Настройки'], ...(M.live && d.channels ? [['ch', 'Каналы']] : []), ...(M.live ? [['diag', 'Диагностика']] : [['stand', 'Прибор']]), ...(canAdd ? [['input', 'Ввод отсчёта']] : [])];
   const stt = (S.devStatus[M.id] || {}).status;
-  const status = !M.live ? statusChip(statusOf(d)) : stt === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>на связи</span>' : stt === 'lost' ? `<span class="chip err"><span class="dot err"></span>нет связи</span>` : stt === 'stale' ? '<span class="chip err"><span class="dot warn"></span>нет данных</span>' : '';
+  const status = gateway ? gatewayStatus(d, M.live) : !M.live ? statusChip(statusOf(d)) : stt === 'ok' ? '<span class="chip ok"><span class="dot ok"></span>на связи</span>' : stt === 'lost' ? `<span class="chip err"><span class="dot err"></span>нет связи</span>` : stt === 'stale' ? '<span class="chip err"><span class="dot warn"></span>нет данных</span>' : '';
   let body = '';
   if (M.tab === 'set') body = `<div class="form" id="mForm">${formHTML(M.id, d.schema, M.draft, lock, M.live)}</div>${lock && d.schema.some(f => f.type !== 'info' && f.type !== 'action' && !f.live) ? '<p class="lockline">Идёт запись: поля с замком меняются на паузе.</p>' : ''}`;
+  else if (M.tab === 'sensors') body = gatewaySensors(d, M.live);
+  else if (M.tab === 'diag' && gateway) {
+    const ds = S.devStatus[M.id] || {}, found = S.found[M.id] || {};
+    body = `<dl class="kv"><dt>Связь с платой</dt><dd>${gatewayStatus(d, M.live)}</dd><dt>Порт</dt><dd class="mono">${esc(M.draft.port || 'не выбран')}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd><dt>Модель</dt><dd>${esc(d.model)}</dd><dt>Результат проверки</dt><dd>${esc((M.live ? ds.reason : found.note) || '—')}</dd></dl><p class="empty-note">Состояние датчиков отображается отдельно во вкладке «Датчики».</p>${M.live ? '<button class="btn" data-act="reconnect">Переподключить</button>' : `<button class="btn" data-act="gwCheck" ${S.searching || S.scan.run ? 'disabled' : ''}>${S.searching ? 'Проверяю…' : 'Проверить подключение'}</button>`}`;
+  }
   else if (M.tab === 'ch') body = `<table class="t"><thead><tr><th></th><th>Канал</th><th>Тип</th><th>Ед.</th><th>Частота</th></tr></thead><tbody>${[...d.channels.map(c => ({ c, sw: (d.switch || []).find(x => x.key === c.key) })), ...(d.switch || []).filter(x => !x.on).map(x => ({ off: x }))].map(({ c, sw, off }) => off ? `<tr class="off"><td>${swHTML(d.id, off.key, false, off.name)}</td><td>${esc(off.name)}</td><td colspan="3">выключен</td></tr>` : `<tr><td>${sw ? swHTML(d.id, c.key, true, c.name) : ''}</td><td>${esc(c.name)}</td><td>${KIND_NAME[c.kind]}</td><td class="mono">${esc(c.unit || '—')}</td><td class="mono">${c.rate ? (c.rate >= 1 ? fmtV(c.rate, c.rate % 1 ? 1 : 0) + ' Гц' : 'раз в ' + fmtV(1 / c.rate, 0) + ' с') : c.kind === 'points' ? 'вручную' : 'по входам'}</td></tr>`).join('')}</tbody></table>`;
   else if (M.tab === 'diag') { const ds = S.devStatus[M.id] || {}; body = `<dl class="kv"><dt>Статус</dt><dd>${esc({ ok: 'на связи', lost: 'нет связи', stale: 'нет данных', wait: 'ждём данных' }[ds.status] || ds.status || '—')}</dd>${ds.reason ? `<dt>Причина</dt><dd>${esc(ds.reason)}</dd>` : ''}<dt>Последний отсчёт</dt><dd class="num">${ds.age != null ? fmtV(ds.age, 1) + ' с назад' : '—'}</dd><dt>Драйвер</dt><dd class="mono">${esc(d.driver)}</dd></dl>${['direct', 'gateway', 'child'].includes(d.group) ? '<p><button class="btn sm" data-act="reconnect">Переподключить</button></p>' : ''}`; }
   else if (M.tab === 'stand') {
@@ -1223,16 +1288,16 @@ function closeModal() { $('#modal').hidden = true; M = null; SW = null; PH = nul
 
 /* ---------- новый прибор ---------- */
 let ND = null;
-async function openNewDev() {
-  const drivers = await run('drivers'); if (!drivers) return;
-  closeModal(); ND = { drivers, driver: null };
+async function openNewDev(parent = null) {
+  const drivers = await run('drivers', parent ? { parent } : {}); if (!drivers) return;
+  closeModal(); ND = { drivers, driver: null, parent };
   renderNewDev(); $('#modal').hidden = false;
 }
 function freeId(base) { const has = id => S.inventory.some(i => i.id === id); let n = 1; while (has(n === 1 ? base : `${base}_${n}`)) n++; return n === 1 ? base : `${base}_${n}`; }
 function renderNewDev() {
   const d = ND.drivers.find(x => x.driver === ND.driver);
   const body = !d
-    ? `<div class="drvs">${ND.drivers.map(x => `<button class="drv" data-act="ndPick" data-v="${esc(x.driver)}">${icon(x.icon)}<span><b>${esc(x.title)}</b><small>${esc(x.model)}</small></span></button>`).join('')}</div>`
+    ? `<div class="drvs">${(ND.parent ? [['child', 'Датчики концентратора']] : [['direct', 'Приборы'], ['gateway', 'Концентраторы'], ['other', 'Ручные и вычисляемые']]).map(([group, title]) => { const drivers = ND.drivers.filter(x => group === 'other' ? ['manual', 'calc'].includes(x.group) : x.group === group); return drivers.length ? `<div class="lbl drv-group">${title}</div>${drivers.map(x => `<button class="drv" data-act="ndPick" data-v="${esc(x.driver)}">${icon(x.icon)}<span><b>${esc(x.title)}</b><small>${esc(x.model)}</small></span></button>`).join('')}` : ''; }).join('')}</div>`
     : `<div class="drv-sel">${icon(d.icon)}<span><b>${esc(d.title)}</b> <small>${esc(d.model)}</small></span><button class="lnk" data-act="ndPick" data-v="">другой</button></div>
       <div class="form" id="ndForm">
         <div class="f-row"><label class="f-l" for="ndName">Имя</label><div class="f-c"><input type="text" id="ndName" value="${esc(d.title)}"></div></div>
@@ -1240,8 +1305,8 @@ function renderNewDev() {
         ${formHTML('nd', d.schema, d.defaults, false, false)}
       </div>`;
   $('#modal').innerHTML = `<div class="modal narrow" role="dialog" aria-modal="true" aria-label="Новый прибор">
-    <div class="m-h"><span class="ic">${icon('plus')}</span><h3>Новый прибор</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
-      <div class="sub"><span>${d ? 'Подписи каналов — потом, в окне прибора' : 'Тип прибора'}</span></div></div>
+    <div class="m-h"><span class="ic">${icon('plus')}</span><h3>${ND.parent ? 'Новый датчик' : 'Новое устройство'}</h3><button class="icon-btn" data-act="mClose" aria-label="Закрыть">${icon('x')}</button>
+      <div class="sub"><span>${ND.parent ? 'Через ' + esc(invById(ND.parent)?.name || ND.parent) : d ? 'Подписи каналов — потом, в окне прибора' : 'Тип устройства'}</span></div></div>
     <div class="m-b">${body}</div>
     <div class="m-f"><span class="sp"></span><button class="btn" data-act="mClose">Отмена</button>${d ? '<button class="btn primary" data-act="ndAdd">Добавить</button>' : ''}</div>
   </div>`;
@@ -1367,14 +1432,36 @@ const ACT = {
   new: () => { S.sel = new Set(); S.drafts = {}; S.template = ''; S.draftName = `опыт_${hhmmss(nowS()).slice(0, 5).replace(':', '')}`; go('select'); if (!S.lastSearch) runRefresh(); else loadPorts(); },
   analysis: () => { closeModal(); go('analysis'); loadRuns(); },
   refresh: runRefresh,
+  gwAddSensor: async () => {
+    if (!M || M.sensorAdd) return;
+    const panel = M; panel.sensorAdd = { drivers: [] }; renderModal();
+    const drivers = await run('drivers', { parent: panel.id });
+    if (M !== panel) return;
+    if (!drivers?.length) { panel.sensorAdd = null; renderModal(); return; }
+    panel.sensorAdd = { drivers, driver: drivers[0].driver, draft: { ...drivers[0].defaults }, name: drivers[0].title };
+    renderModal();
+  },
+  gwSensorCancel: () => { if (!M.sensorAdd.saving) { M.sensorAdd = null; renderModal(); } },
+  gwSensorPick: b => { if (M.sensorAdd.saving) return; const d = M.sensorAdd.drivers.find(i => i.driver === b.dataset.v); M.sensorAdd = { ...M.sensorAdd, driver: d.driver, draft: { ...d.defaults }, name: d.title }; renderModal(); },
+  gwSensorSave: addGatewaySensor,
+  gwDiscover: b => discoverGateway(b.dataset.dev, b.dataset.sensor || null),
+  gwCheck: async () => {
+    if (!M || S.searching || S.scan.run) return;
+    const id = M.id;
+    const result = await run('gateway_check', { device: id, settings: { ...S.drafts, [id]: M.draft } });
+    if (result) { S.found[id] = result.found; toast(result.found.note); }
+    if (M && M.id === id) renderModal();
+    if (S.screen === 'select') renderSelect();
+  },
   devNew: () => { keepName(); openNewDev(); },
   ndPick: b => { ND.driver = b.dataset.v || null; renderNewDev(); },
   ndAdd: async () => {
     const d = ND.drivers.find(x => x.driver === ND.driver);
     const name = $('#ndName').value.trim() || d.title;
-    const r = await run('device_add', { driver: d.driver, name, id: $('#ndId').value.trim(), settings: readForm($('#ndForm')), by: BY });
+    const r = await run('device_add', { driver: d.driver, parent: ND.parent, name, id: $('#ndId').value.trim(), settings: readForm($('#ndForm')), by: BY });
     if (!r) return;
-    closeModal(); toast(`Добавлен: ${name}`); S.showMissing = true; runRefresh();
+    const parent = ND.parent; closeModal(); toast(`Добавлен: ${name}`); S.showMissing = true;
+    if (parent) { openDevWin(parent, 'sensors'); discoverGateway(parent, r.id); } else runRefresh();
   },
   stDel: () => { M.stName = $('#stName').value; M.del = true; renderModal(); },
   stDelNo: () => { M.del = false; renderModal(); },

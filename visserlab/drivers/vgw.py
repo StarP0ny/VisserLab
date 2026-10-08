@@ -164,6 +164,7 @@ class Gateway(Driver):
     title = "SensorsMotherboard"
     model = "CH32V303 / протокол v1"
     group = "gateway"
+    child_drivers = ("scd41", "sht41")
     settings = [Field("port", "Порт", "port", ""),
                 Field("baud", "Скорость UART", "number", 460800, min=9600, max=3000000),
                 Field("ping_ms", "Период пингов", "number", 1000, unit="мс", min=100, max=60000),
@@ -183,6 +184,16 @@ class Gateway(Driver):
         if sensor in self.kids:
             raise DriverError("Один ID датчика назначен двум приборам")
         self.kids[sensor] = child
+
+    @classmethod
+    def diagnostic_link(cls, cfg):
+        link = Link(cfg["port"], cfg.get("baud", 460800))
+        try:
+            link.hello()
+            return link
+        except Exception:
+            link.close()
+            raise
 
     @classmethod
     def discover(cls, cfg, children=None):

@@ -68,7 +68,7 @@ def _set_labels(e, labels):
         e.pop("channels", None)
 
 
-def add_device(cfg_dir, dev_id, driver, name, settings, labels):
+def add_device(cfg_dir, dev_id, driver, name, settings, labels, parent=None):
     def fn(devs):
         e = CommentedMap()
         e["driver"] = driver
@@ -79,8 +79,9 @@ def add_device(cfg_dir, dev_id, driver, name, settings, labels):
             e["settings"] = s
         if labels:
             e["channels"] = CommentedMap(labels)
-        devs[dev_id] = e
-        devs.yaml_set_comment_before_after_key(dev_id, before="\n", indent=2)
+        box = devs if parent is None else devs[parent].setdefault("children", CommentedMap())
+        box[dev_id] = e
+        box.yaml_set_comment_before_after_key(dev_id, before="\n", indent=2 if parent is None else 6)
     _edit(cfg_dir, fn)
 
 

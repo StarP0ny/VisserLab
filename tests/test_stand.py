@@ -135,3 +135,52 @@ def test_channels_on_off(coll):
     assert "выключен" in ev and "включён" in ev
     meta = yaml.safe_load((d / "meta.yaml").read_text(encoding="utf-8"))
     assert meta["devices"]["sim_pt100"]["disabled"] == ["T1", "T2", "T3", "T4", "T5", "T6", "T7"]
+
+
+def test_concentrator_children(coll):
+    hub = coll.request("device_add", driver="vgw", settings={"port": "COM27"})["id"]
+    drivers = coll.request("drivers", parent=hub)
+    assert {d["driver"] for d in drivers} == {"scd41", "sht41"}
+    with pytest.raises(CollectorError):
+        coll.request("device_add", driver="scd41")
+    with pytest.raises(CollectorError):
+        coll.request("device_add", driver="manual", parent=hub)
+    with pytest.raises(CollectorError):
+        coll.request("drivers", parent="syringe")
+    child = coll.request("device_add", driver="scd41", parent=hub, name="CO2")
+    coll.request("device_add", driver="sht41", parent=hub)
+    inv = {i["id"]: i for i in coll.request("hello")["inventory"]}
+    assert inv[child["id"]]["parent"] == hub
+    doc = yaml.safe_load(text(coll))
+    assert doc["devices"][hub]["children"][child["id"]]["name"] == "CO2"
+    with pytest.raises(CollectorError, match="ID"):
+        coll.request("device_add", driver="scd41", parent=hub)
+    removed = coll.request("device_del", id=hub)["deleted"]
+    assert {hub, child["id"], "sht41"} <= set(removed)
+
+
+def test_sensor_discovery_only_selected_gateway_and_sensor(coll, monkeypatch):
+    from visserlab.drivers.vgw import Gateway
+    from visserlab.core.driver import Found
+    hub = coll.request("device_add", driver="vgw", settings={"port": "COM27"})["id"]
+    other = coll.request("device_add", driver="vgw", settings={"port": "COM28"})["id"]
+    child = coll.request("device_add", driver="scd41", parent=hub)["id"]
+    sibling = coll.request("device_add", driver="sht41", parent=hub)["id"]
+    foreign = coll.request("device_add", driver="scd41", parent=other)["id"]
+    coll.found = {sibling: {"ok": True, "note": "old"}, other: {"ok": False, "note": "untouched"}, foreign: {"ok": False, "note": "untouched"}}
+    calls = []
+    def discover(cls, cfg, children):
+        calls.append((cfg["port"], set(children)))
+        return Found(True, "OK", list(children))
+    monkeypatch.setattr(Gateway, "discover", classmethod(discover))
+    result = coll.request("discover", device=hub, sensor=child)
+    assert calls == [("COM27", {child})]
+    assert set(result) == {hub, child}
+    assert coll.found[sibling] == {"ok": True, "note": "old"}
+    assert coll.found[other] == {"ok": False, "note": "untouched"}
+    assert coll.found[foreign] == {"ok": False, "note": "untouched"}
+    calls.clear()
+    coll.request("discover", device=hub)
+    assert calls == [("COM27", {child, sibling})]
+    with pytest.raises(CollectorError, match="не относится"):
+        coll.request("discover", device=hub, sensor=foreign)

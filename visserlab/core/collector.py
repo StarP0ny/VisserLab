@@ -285,23 +285,64 @@ class Collector:
         cls = REGISTRY[inv["driver"]]
         return {**cls.defaults(), **cls.validate({**(inv.get("settings") or {}), **((over or {}).get(dev_id) or {})})}
 
-    def _discover(self, settings=None):
+    def _gateway_target(self, device):
+        inv = self.cfg.devices.get(device)
+        cls = REGISTRY.get(inv["driver"]) if inv else None
+        if cls is None or cls.group != "gateway" or not hasattr(cls, "diagnostic_link"):
+            raise CollectorError("Обмен доступен для SensorsMotherboard")
+        return cls
+
+    def _cmd_gateway_check(self, device, settings=None):
+        cls = self._gateway_target(device)
+        if not self._probing.acquire(blocking=False):
+            raise CollectorError("Уже идёт проверка или поиск приборов")
+        link = None
+        temporary = False
+        try:
+            active = self.devices.get(device)
+            link = getattr(active.drv, "link", None) if active else None
+            if active and link is None:
+                raise CollectorError("Плата ещё подключается")
+            if link is None:
+                link = cls.diagnostic_link(self._effective(device, settings))
+                temporary = True
+            else:
+                from ..gwproto import Type
+                link.request(Type.GET_CONFIG, expected=Type.CONFIG)
+            found = {"ok": True, "note": "Плата отвечает; датчики не проверялись"}
+        except Exception as exc:
+            found = {"ok": False, "note": _reason(exc)}
+        finally:
+            if temporary:
+                link.close()
+            self._probing.release()
+        self.found[device] = found
+        self._publish({"type": "found", "found": dict(self.found)})
+        return {"found": found}
+
+    def _discover(self, settings=None, device=None, sensor=None):
         """Одна проверка каждого прибора. settings — правки клиента, ещё не ушедшие в prepare."""
+        if device is not None:
+            inv = self.cfg.devices.get(device)
+            if inv is None or inv.get("parent"):
+                raise CollectorError("Нужен прибор или концентратор из стенда")
+        if sensor is not None and (device is None or self.cfg.devices.get(sensor, {}).get("parent") != device):
+            raise CollectorError("Датчик не относится к выбранному концентратору")
         if not self._probing.acquire(blocking=False):
             raise CollectorError("Идёт перебор приборов" if self.scan["run"] else "Проверка уже идёт")
         try:
-            return self._discover_all(settings)
+            return self._discover_all(settings, device, sensor)
         finally:
             self._probing.release()
 
-    def _discover_all(self, settings):
+    def _discover_all(self, settings, device=None, sensor=None):
         busy = dict(self.devices)
         res = {}
         for i, inv in self.cfg.devices.items():
-            if inv.get("parent"):
+            if inv.get("parent") or (device is not None and i != device):
                 continue
             cls = REGISTRY[inv["driver"]]
-            kids = {c: ci for c, ci in self.cfg.devices.items() if ci.get("parent") == i}
+            kids = {c: ci for c, ci in self.cfg.devices.items() if ci.get("parent") == i and (sensor is None or sensor == c)}
             if i in busy:
                 f = Found(busy[i].status == "ok", "в работе", [c for c in kids if c in busy])
             else:
@@ -314,8 +355,11 @@ class Collector:
                 ok = f.ok and c in f.children
                 res[c] = {"ok": ok, "note": "" if ok else
                           f"{inv.get('name', i)}: {'нет ответа от прибора' if f.ok else 'нет связи'}"}
-        self.found = res
-        self._publish({"type": "found", "found": res})
+        if device is None:
+            self.found = res
+        else:
+            self.found.update(res)
+        self._publish({"type": "found", "found": dict(self.found)})
         return res
 
     def _cmd_prepare(self, name="", devices=None, template=None, settings=None, note="", alarms=None, by=""):
@@ -507,16 +551,25 @@ class Collector:
         return res
 
     # ================= стенд: приборы в devices.yaml =================
-    def _cmd_drivers(self):
+    def _cmd_drivers(self, parent=None):
         """Драйверы, которые можно добавить из интерфейса."""
+        allowed = self._child_drivers(parent) if parent is not None else None
         out = []
         for cls in REGISTRY.values():
-            if cls.group in ADDABLE:
+            eligible = cls.type_id in allowed if allowed is not None else cls.group in ADDABLE
+            if eligible:
                 d = cls.describe()
                 d["schema"] = d.pop("settings")
                 d["defaults"] = cls.defaults()
                 out.append(d)
-        return sorted(out, key=lambda d: (ADDABLE.index(d["group"]), d["title"]))
+        return sorted(out, key=lambda d: (ADDABLE.index(d["group"]) if d["group"] in ADDABLE else len(ADDABLE), d["title"]))
+
+    def _child_drivers(self, parent):
+        inv = self.cfg.devices.get(parent)
+        cls = REGISTRY.get(inv["driver"]) if inv else None
+        if cls is None or cls.group != "gateway" or inv.get("parent"):
+            raise CollectorError("Нужен концентратор из стенда")
+        return getattr(cls, "child_drivers", ())
 
     def _stand_check(self):
         self._need(IDLE)
@@ -536,10 +589,11 @@ class Collector:
     def _labels(channels):
         return {str(k): str(v).strip() for k, v in (channels or {}).items() if str(v).strip()}
 
-    def _cmd_device_add(self, driver, name="", settings=None, channels=None, id=None, by=""):
+    def _cmd_device_add(self, driver, name="", settings=None, channels=None, id=None, by="", parent=None):
         self._stand_check()
         cls = REGISTRY.get(driver)
-        if cls is None or cls.group not in ADDABLE:
+        allowed = self._child_drivers(parent) if parent is not None else None
+        if cls is None or (driver not in allowed if allowed is not None else cls.group not in ADDABLE):
             raise CollectorError(f"Нет драйвера «{driver}»")
         free = (cls.type_id if n == 1 else f"{cls.type_id}_{n}" for n in range(1, 1000))
         dev_id = str(id or "").strip() or next(i for i in free if i not in self.cfg.devices)
@@ -552,8 +606,13 @@ class Collector:
         except DriverError as e:
             raise CollectorError(str(e)) from None
         defaults = cls.defaults()
+        sensor_id = vals.get("sensor_id", defaults.get("sensor_id"))
+        if parent is not None and sensor_id is not None:
+            for child in self.cfg.devices.values():
+                if child.get("parent") == parent and {**REGISTRY[child["driver"]].defaults(), **REGISTRY[child["driver"]].validate(child.get("settings") or {})}.get("sensor_id") == sensor_id:
+                    raise CollectorError("Этот ID датчика уже добавлен к концентратору")
         keep = {k: v for k, v in vals.items() if str(v) != str(defaults.get(k))}
-        stand.add_device(self.cfg.dir, dev_id, driver, str(name).strip() or cls.title, keep, self._labels(channels))
+        stand.add_device(self.cfg.dir, dev_id, driver, str(name).strip() or cls.title, keep, self._labels(channels), parent=parent)
         self._stand_reload()
         return {"id": dev_id}
 
